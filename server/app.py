@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from utils.database import Database
 from utils.scraper import scrape_website
 from models.model_inference import predict_model
+import uvicorn #keep for pipreqs --force command to include
 
 app = FastAPI()
 
