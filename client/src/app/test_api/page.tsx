@@ -5,7 +5,8 @@ import useSWR from 'swr';
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function HomePage() {
-  const { data, error } = useSWR('http://localhost:8000/predict', fetcher);
+  const clientRootUrl = process.env.NEXT_PUBLIC_CLIENT_ROOT_URL || "http://localhost:3000"
+  const { data, error } = useSWR(`${clientRootUrl}/predict`, fetcher);
 
   if (error) return <div>Error fetching prediction</div>;
   if (!data) return <div>Loading prediction...</div>;
