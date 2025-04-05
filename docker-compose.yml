@@ -19,3 +19,14 @@ services:
       - '8000:8000' # Map port 8000 on your machine to port 8000 in the container
     volumes:
       - ./server:/app # Mount the server directory for live code changes
+
+  fastapi-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    environment:
+      - OLLAMA_HOST=http://localhost:11434

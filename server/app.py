@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 from utils.database import Database
 from utils.scraper import scrape_website
@@ -6,8 +6,17 @@ from models.model_inference import predict_model
 import uvicorn
 import os
 import shutil
-from typing import Optional
+from typing import Optional, Dict, Any
 import whisper_service
+import feedback_service
+from pydantic import BaseModel
+
+
+# Define the model for interview feedback request
+class InterviewFeedbackRequest(BaseModel):
+    question: str
+    response: str
+    model_name: Optional[str] = "llama3"
 
 app = FastAPI()
 
@@ -31,6 +40,14 @@ app.add_middleware(
 async def startup_event():
     # Initialize the models on startup
     whisper_service.load_models("base")
+
+    # Try to initialize Llama, but don't block startup if it fails
+    # It will try again when the endpoint is called
+    try:
+        feedback_service.initialize_llama("llama3")
+    except Exception as e:
+        print(f"Warning: Could not initialize Llama model at startup: {str(e)}")
+        print("The model will be initialized when the endpoint is first called.")
 
 @app.post("/convert-audio")
 async def convert_audio(file: UploadFile = File(...), model_name: Optional[str] = "base"):
@@ -59,6 +76,36 @@ async def convert_audio(file: UploadFile = File(...), model_name: Optional[str] 
         # Clean up the temporary file
         if os.path.exists(temp_file):
             os.remove(temp_file)
+
+@app.post("/interview-feedback")
+async def get_interview_feedback(request: InterviewFeedbackRequest):
+    """
+    Endpoint to generate feedback on interview responses using Llama3.
+
+    Takes:
+    - question: The interview question that was asked
+    - response: The text transcription of the interviewee's response
+    - model_name: (Optional) The name of the Llama model to use
+
+    Returns:
+    - Structured feedback including strengths, areas for improvement, suggestions, and a grade
+    """
+    try:
+        # Call the Llama service to generate feedback
+        feedback = feedback_service.generate_interview_feedback(
+            question=request.question,
+            response=request.response,
+            model_name=request.model_name
+        )
+
+        return feedback
+    except Exception as e:
+        # Return a more user-friendly error response instead of throwing an HTTP exception
+        return {
+            "question": request.question,
+            "response": request.response,
+            "error": f"Failed to generate feedback: {str(e)}"
+        }
 
 @app.get("/")
 def read_root():
