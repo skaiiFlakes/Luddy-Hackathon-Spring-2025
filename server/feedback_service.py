@@ -108,6 +108,8 @@ def generate_interview_feedback(question: str, response: str, model_name: str = 
             "grade": "A letter grade (A, B, C, D, or F) that evaluates the overall quality of the response"
         }}
 
+        ONLY analyze the words being used, you do not have any context from the actual voice of the interviewee, beyond filler words.
+        Return your answers in a first-person format, as if you were talking directly to the candidate after interviewing them.
         Ensure your feedback is specific to the content of the response and relevant to the question asked. Return ONLY the JSON.
         """
 
