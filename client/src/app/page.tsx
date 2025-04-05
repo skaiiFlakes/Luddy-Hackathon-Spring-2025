@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Navbar from "@/components/navbar"
 import { Button } from "@/components/ui/button"
-import { PlusCircle } from "lucide-react"
-import NewInterviewModal from "@/components/new-interview-modal"
+import NewInterviewButton from "@/components/new-interview-button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -145,7 +145,8 @@ export default function InterviewsPage() {
   )
 
   return (
-    <>
+    <div className="flex min-h-screen flex-col">
+      <Navbar onNewInterview={() => setIsModalOpen(true)} />
       <div className="container flex-1 flex items-center justify-center py-6">
         <div className="w-full">
           <Card className="h-full">
@@ -224,16 +225,10 @@ export default function InterviewsPage() {
           </Card>
 
           <div className="flex flex-col items-center mt-12">
-            <Button onClick={() => setIsModalOpen(true)}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              New Interview
-            </Button>
+            <NewInterviewButton />
           </div>
         </div>
       </div>
-
-      <NewInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-    </>
+    </div>
   )
 }
-

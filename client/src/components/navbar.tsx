@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { PlusCircle } from "lucide-react"
+import NewInterviewButton from "@/components/new-interview-button"
+import { VoiceSettingsDialog } from "@/components/voice-settings-dialog"
 
 interface NavbarProps {
   onOpenModal: () => void;
@@ -44,10 +46,10 @@ export default function Navbar({ onOpenModal }: NavbarProps) {
               Interviews
             </Link>
           </nav>
-          <Button size="sm" onClick={onOpenModal}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            New Interview
-          </Button>
+          <div className="flex gap-4">
+            <VoiceSettingsDialog />
+            <NewInterviewButton />
+          </div>
         </div>
       </div>
     </header>
