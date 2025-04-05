@@ -18,11 +18,20 @@ TEMPLATES = {
     "technical"    : open("prompts/technical_questions.tmpl").read(),
     "behavioral"   : open("prompts/behavioral_questions.tmpl").read(),
     "follow_up"    : open("prompts/follow_up.tmpl").read(),
-    "wrap_up"      : open("prompts/wrap_up.tmpl").read()
+    "wrap_up"      : open("prompts/wrap_up.tmpl").read(),
+    "feedback"      : open("prompts/feedback.tmpl").read()
 }
 
 class Questions(pydantic.BaseModel):
     questions: list[str]
+
+class Feedback(pydantic.BaseModel):
+    question              : str;
+    response              : str;
+    strengths             : list[str];
+    areas_for_improvement : list[str];
+    suggestions           : list[str];
+    grade                 : str;
 
 class Interviewer:
     # Interviewer information.
@@ -53,14 +62,29 @@ class Interviewer:
 
         self.generate_questions()
 
+
+    def generate_questions(self):
+        prompt = TEMPLATES[self.mode] % (self.keywords)
+
+        response = ollama.chat(
+            messages = [
+                {'role': 'system', 'content': self.persona},
+                {'role': 'system', 'content': prompt}
+            ],
+            options = CFG,
+            model   = LLM,
+            format  = Questions.model_json_schema()
+        )
+
+        self.questions = Questions.model_validate_json(response.message.content).questions
+
     def next_question(self):
         if self.question_idx >= len(self.questions):
             return None
 
-
         question = self.questions[self.question_idx]
 
-        self.history.apppend(
+        self.history.append(
             {"role": "assistant", "content": question}
         )
 
@@ -108,8 +132,6 @@ class Interviewer:
             model   = LLM,
         )
 
-        self.history.append(response.message)
-
         return response.message.content
     
     def generate_closer(self):
@@ -128,21 +150,39 @@ class Interviewer:
             model   = LLM,
         )
 
-        self.history.append(response.message)
-
         return response.message.content
+    
+    def generate_feedback(self):
+        out = []
 
-    def generate_questions(self):
-        prompt = TEMPLATES[self.mode] % (self.keywords)
+        for i in range(len(self.history) - 1):
+            if i % 2 != 0:
+                continue
 
-        response = ollama.chat(
-            messages = [
-                {'role': 'system', 'content': self.persona},
-                {'role': 'user', 'content': prompt}
-            ],
-            options = CFG,
-            model   = LLM,
-            format  = Questions.model_json_schema()
-        )
+            q = self.history[i]
+            r = self.history[i + 1]
 
-        self.questions = Questions.model_validate_json(response.message.content).questions
+            response = ollama.chat(
+                messages = [
+                    {'role': 'system', 'content': TEMPLATES['feedback'] % (q, r)}
+                ],
+                options = CFG,
+                model   = LLM,
+                format  = Feedback.model_json_schema()
+            )
+
+            feedback = Feedback.model_validate_json(response.message.content)
+
+            feedback = {
+                'question'              : feedback.question,
+                'response'              : feedback.response,
+                'strengths'             : feedback.strengths,
+                'areas_for_improvement' : feedback.areas_for_improvement,
+                'suggestions'           : feedback.suggestions,
+                'grade'                 : feedback.grade,
+            }
+
+            out.append(feedback)
+            
+        return out
+

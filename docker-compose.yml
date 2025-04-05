@@ -15,7 +15,8 @@ services:
   # Backend service (Python)
   server:
     build: ./server # Path to the Dockerfile for the backend
+    network_mode: host
     ports:
-      - '8000:8000' # Map port 8000 on your machine to port 8000 in the container
+      - '5000:5000'
     volumes:
       - ./server:/app # Mount the server directory for live code changes

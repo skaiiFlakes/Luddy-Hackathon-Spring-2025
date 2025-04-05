@@ -4,7 +4,6 @@ import pypdf
 import json
 import base64
 
-from dataclasses import dataclass
 from flask       import Flask, request, jsonify
 from uuid        import uuid4
 from pathlib     import Path
@@ -12,12 +11,17 @@ from datetime    import datetime
 
 from personas      import Interviewer
 from transcription import transcribe_webm
+from scraping      import scrape_job, save_to_json
+from coach         import coach_video_file
 
 app = Flask(__name__)
 ctx = {}
 
 UPLOAD_FOLDER = 'uploads'
 RECORD_FOLDER = 'recordings'
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(RECORD_FOLDER, exist_ok=True)
 
 def extract_resume(stream) -> str:
     reader = pypdf.PdfReader(stream)
@@ -43,6 +47,7 @@ def start_interview():
         'focus_areas',
         'job_link',
     ]
+
     if 'file' not in request.files:
         return bad_request("No file part in the request")
     
@@ -70,6 +75,9 @@ def start_interview():
     interview_type = request.form['interview_type']
     focus_areas    = request.form['focus_areas']
     job_link       = request.form['job_link']
+
+    # job_data = scrape_job(job_link)
+    # save_to_json(job_data, "job_data.json") 
 
     ctx[uuid] = Interviewer(
         interviewer,
@@ -106,6 +114,7 @@ def next_question(session_id):
             "question"         : question,
             "question_number"  : idx,
             "total_questions"  : len(session.questions),
+            "finished"         : False,
         }
 
     return response, 200
@@ -121,11 +130,8 @@ def next_response(session_id):
     if 'data' not in data:
         return jsonify({"error": "No recording data provided"}), 400
     
-    kind = data.get('type', 'audio')  # 'audio' or 'video'
-    ext  = '.webm' if kind == 'video' else '.wav'
-    
     time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"{session_id}_{time}{ext}"
+    name = f"{session_id}_{time}.wav"
     path = os.path.join(RECORD_FOLDER, name)
 
     try:
@@ -139,11 +145,7 @@ def next_response(session_id):
         
         # Transcribe the recording
         try:
-            if kind == 'video':
-                # text = extract_video(path)
-                raise "Nuh uh"
-            else:
-                text = transcribe_webm(path)['text']
+            text = transcribe_webm(path)['text']
         except Exception as e:
             return jsonify({"error": f"Error transcribing recording: {str(e)}"}), 500
         
@@ -160,5 +162,42 @@ def next_response(session_id):
     except Exception as e:
         return jsonify({"error": f"Error processing recording: {str(e)}"}), 500
 
+@app.route('/api/interview/<session_id>/feedback', methods=["GET"])
+def feedback(session_id):
+    if session_id not in ctx:
+        return bad_request("Interview session not found")
+    
+    session = ctx[session_id]
+
+    response = {
+        "evaluation": session.generate_feedback()
+    }
+
+    return jsonify(response), 200
+
+@app.route('/api/coach', methods=['POST'])
+def coach():
+    if 'file' not in request.files:
+        return bad_request("No file part in the request")
+    
+    file = request.files['file']
+    name = file.filename
+
+    if not name:
+        return bad_request("No file selected")
+    
+    if Path(name).suffix != ".webm":
+        return bad_request("Must provide a WEBM file")
+
+    uuid = f"{uuid4()}"
+    path = os.path.join(UPLOAD_FOLDER, uuid)
+
+    with open(path, "wb") as dest:
+        file.save(dest)
+
+    analysis = coach_video_file(path)
+
+    return jsonify(analysis), 200
+    
 if __name__ == "__main__":
     app.run(debug=True)
