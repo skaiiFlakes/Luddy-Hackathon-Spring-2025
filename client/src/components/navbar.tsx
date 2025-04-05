@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button"
 import { PlusCircle } from "lucide-react"
 
 interface NavbarProps {
-  onNewInterview?: () => void
+  onOpenModal: () => void;
 }
 
-export default function Navbar({ onNewInterview }: NavbarProps) {
+export default function Navbar({ onOpenModal }: NavbarProps) {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -44,7 +44,7 @@ export default function Navbar({ onNewInterview }: NavbarProps) {
               Interviews
             </Link>
           </nav>
-          <Button size="sm" onClick={onNewInterview}>
+          <Button size="sm" onClick={onOpenModal}>
             <PlusCircle className="mr-2 h-4 w-4" />
             New Interview
           </Button>

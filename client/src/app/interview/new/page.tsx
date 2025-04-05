@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import Navbar from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Mic } from "lucide-react"
@@ -150,11 +149,10 @@ export default function ConductInterviewPage() {
   }, [isRecording])
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar onNewInterview={() => setIsModalOpen(true)} />
+    <>
       <div className={`container flex flex-1 items-center justify-center py-8 relative w-100vw ${
               fadeIn ? "opacity-100" : "opacity-0"
-            }`} >
+            }`}>
         {/* Stack AI Interviewer and Transcript & Controls */}
         <div className="flex flex-col items-center justify-center w-full lg:flex-row lg:w-100 lg:items-center">
           {/* AI Interviewer with Audio Waves */}
@@ -234,6 +232,6 @@ export default function ConductInterviewPage() {
       </div>
 
       <NewInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-    </div>
+    </>
   )
 }

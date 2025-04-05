@@ -1,5 +1,4 @@
 "use client"
-import Navbar from "@/components/navbar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -294,8 +293,7 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Navbar onNewInterview={() => setIsModalOpen(true)} />
+    <>
       {/* MAIN CONTENT */}
       <div className="container flex flex-1 flex-col lg:flex-row">
         {/* Left Column */}
@@ -548,7 +546,7 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
       </div>
 
       <NewInterviewModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-    </div>
+    </>
   )
 }
 
