@@ -6,6 +6,7 @@ import whisper_service
 import feedback_service
 from werkzeug.utils import secure_filename
 import tempfile
+import json
 
 app = Flask(__name__)
 
@@ -14,8 +15,8 @@ model = None
 current_model_name = None  # Track which model is loaded
 
 
-@app.before_first_request
-def startup_event():
+# Use with_app_context instead of before_first_request
+def initialize_models():
     # Initialize the models on startup
     whisper_service.load_models("base")
 
@@ -27,6 +28,10 @@ def startup_event():
         print(f"Warning: Could not initialize Llama model at startup: {str(e)}")
         print("The model will be initialized when the endpoint is first called.")
 
+
+# Initialize models when the application starts
+with app.app_context():
+    initialize_models()
 
 @app.route('/convert-audio', methods=['POST'])
 def convert_audio():
@@ -156,6 +161,99 @@ def get_batch_interview_feedback():
             "error": f"Failed to generate batch feedback: {str(e)}"
         }), 500
 
+
+@app.route('/process-interview-json', methods=['POST'])
+def process_interview_json():
+    """
+    Endpoint to process a full interview JSON and generate feedback for all answers.
+
+    Takes:
+    - interview_data: The full interview JSON in the specified format
+    - model_name: (Optional) The name of the Llama model to use
+
+    Returns:
+    - The updated interview JSON with evaluations for each answer
+    """
+    # Get request data
+    data = request.json
+
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    # Extract interview data and model name
+    interview_data = data.get('interview_data')
+    model_name = data.get('model_name', 'llama3')
+
+    if not interview_data:
+        return jsonify({"error": "interview_data field is required"}), 400
+
+    try:
+        # Process the interview JSON
+        updated_data = feedback_service.process_interview_json(
+            interview_data=interview_data,
+            model_name=model_name
+        )
+
+        return jsonify(updated_data)
+    except Exception as e:
+        # Return a more user-friendly error response
+        return jsonify({
+            "error": f"Failed to process interview JSON: {str(e)}",
+            "original_data": interview_data
+        }), 500
+
+
+@app.route('/process-interview-file', methods=['POST'])
+def process_interview_file():
+    """
+    Endpoint to process an interview JSON file and generate feedback for all answers.
+
+    Takes:
+    - file: The interview JSON file
+    - model_name: (Optional) The name of the Llama model to use
+
+    Returns:
+    - The updated interview JSON with evaluations for each answer
+    """
+    # Check if the file is in the request
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    # Get model name from the request
+    model_name = request.form.get('model_name', 'llama3')
+
+    # Verify file extension is JSON
+    if not file.filename.lower().endswith('.json'):
+        return jsonify({"error": "File must be a JSON file"}), 400
+
+    # Save the uploaded file temporarily
+    temp_file = os.path.join(tempfile.gettempdir(), f"temp_{secure_filename(file.filename)}")
+    file.save(temp_file)
+
+    try:
+        # Read the JSON file
+        with open(temp_file, 'r') as f:
+            interview_data = json.load(f)
+
+        # Process the interview JSON
+        updated_data = feedback_service.process_interview_json(
+            interview_data=interview_data,
+            model_name=model_name
+        )
+
+        return jsonify(updated_data)
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid JSON file"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        # Clean up the temporary file
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
 
 
 if __name__ == '__main__':

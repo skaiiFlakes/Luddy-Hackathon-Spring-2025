@@ -1,34 +1,27 @@
 version: '3.8'
 
 services:
-  # Frontend service (Next.js)
-  client:
-    build: ./client # Path to the Dockerfile for the frontend
+  ollama:
+    image: ollama/ollama
     ports:
-      - '3000:3000' # Map port 3000 on your machine to port 3000 in the container
+      - "11434:11434"
     volumes:
-      - ./client:/app # Mount the client directory for live code changes
-      - /app/node_modules # Avoid overwriting node_modules in the container
-    environment:
-      - CHOKIDAR_USEPOLLING=true # Enable file watching in Docker
-
-  # Backend service (Python)
-  server:
-    build: ./server # Path to the Dockerfile for the backend
-    ports:
-      - '8000:8000' # Map port 8000 on your machine to port 8000 in the container
-    volumes:
-      - ./server:/app # Mount the server directory for live code changes
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
 
   flask-app:
     build:
-      context: .
+      context: ./server  # Point to the directory containing the Dockerfile
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
-    volumes:
-      - ./:/app
     environment:
       - FLASK_ENV=development
       - FLASK_APP=app.py
-      - OLLAMA_HOST=http://localhost:11434
+      - OLLAMA_HOST=http://ollama:11434
+      - HF_TOKEN=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
+    depends_on:
+      - ollama
+
+volumes:
+  ollama_data:
