@@ -5,33 +5,27 @@ import { useRouter } from "next/navigation"
 import Navbar from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Mic, Square, Loader } from "lucide-react"
+import { Mic, Square, Loader, Clock } from "lucide-react"
 import { saveAs } from "file-saver"
 import Image from "next/image"
 import aiInterviewService, { InterviewResponse } from "@/services/ai-interview-service"
 
-// Map interviewer names to their default personalities
-const interviewerPersonalityMap: Record<string, string> = {
-  'todd': 'friendly',
-  'jeff': 'professional',
-  'karen': 'challenging',
-  'creep': 'creepy',
-};
 
 export default function ConductInterviewPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [interviewComplete, setInterviewComplete] = useState(false)
   const [currentTranscript, setCurrentTranscript] = useState("")
   const [interviewer, setInterviewer] = useState("todd")
-  const [personality, setPersonality] = useState("friendly")
   const [isUserTurn, setIsUserTurn] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [interviewResponses, setInterviewResponses] = useState<InterviewResponse[]>([])
+  const [isProcessing, setIsProcessing] = useState(true)
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [timer, setTimer] = useState(0)
+  const [isTimerRunning, setIsTimerRunning] = useState(false)
+  const [showTranscript, setShowTranscript] = useState(false)
 
   const router = useRouter()
   const [fadeIn, setFadeIn] = useState(false)
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Video functionality
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -39,144 +33,92 @@ export default function ConductInterviewPage() {
   const recordedChunks = useRef<Blob[]>([])
   const recordedSessions = useRef<{video: Blob, transcript: string}[]>([])
 
-  // Speech recognition
-  const recognitionRef = useRef<any>(null)
+  // Format time as mm:ss
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
 
-  useEffect(() => {
-    // Initialize the Web Speech API
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
+  // Start timer
+  const startTimer = () => {
+    if (isTimerRunning) return
 
-      recognitionRef.current.onresult = (event: any) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
+    setIsTimerRunning(true)
+    timerIntervalRef.current = setInterval(() => {
+      setTimer(prevTimer => prevTimer + 1)
+    }, 1000)
+  }
 
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript;
-          } else {
-            interimTranscript += event.results[i][0].transcript;
-          }
-        }
-
-        setCurrentTranscript(finalTranscript || interimTranscript);
-      };
-    } else {
-      console.error("Speech recognition not supported");
+  // Stop timer
+  const stopTimer = () => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = null
     }
-
-    return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-    };
-  }, []);
+    setIsTimerRunning(false)
+  }
 
   useEffect(() => {
-    // Listen for interviewer selection from query params
+    // Cleanup timer on component unmount
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    console.log("ConductInterviewPage mounted")
     const queryParams = new URLSearchParams(window.location.search)
-    const selectedInterviewer = queryParams.get("interviewer")
+    const selectedInterviewer = queryParams.get("interviewer") || "jeff"
+    const urlJobUrl = queryParams.get("jobUrl") || "https://www.google.com/about/careers/applications/jobs/results/134028773082178246-software-engineer-engineering-productivity-silicon"
+    const interviewType = queryParams.get("interviewType") || "mixed"
+    const focusAreas = queryParams.get("focusAreas") || ""
 
-    if (selectedInterviewer) {
-      setInterviewer(selectedInterviewer)
-      // Set personality based on interviewer
-      const defaultPersonality = interviewerPersonalityMap[selectedInterviewer] || 'friendly';
-      setPersonality(defaultPersonality);
 
-      // Initialize the AI interview with default questions
-      initializeInterview(selectedInterviewer);
+    if (queryParams.has("interviewer") || queryParams.has("jobUrl") || queryParams.has("interviewType") || queryParams.has("focusAreas")) {
+      setInterviewer(selectedInterviewer);
+      console.log(selectedInterviewer, interviewType, urlJobUrl, focusAreas);
+      initializeInterview(selectedInterviewer, interviewType, urlJobUrl, focusAreas);
     }
 
     const timer = setTimeout(() => setFadeIn(true), 0);
     return () => clearTimeout(timer);
   }, [router]);
 
-  const initializeInterview = async (selectedInterviewer) => {
-    // Ensure personality is correctly set based on interviewer
-    const interviewerPersonality = interviewerPersonalityMap[selectedInterviewer] || 'friendly';
-
-    // Get custom questions from backend or use defaults
-    try {
-      console.log('Fetching questions from backend...');
-      console.log(selectedInterviewer, interviewerPersonality);
-      const response = await fetch("http://localhost:5000/api/get-interview-questions");
-      const data = await response.json();
-      aiInterviewService.initializeInterview(
-        selectedInterviewer,
-        interviewerPersonality as any,
-        data.questions || []
-      );
-    } catch (error) {
-      console.error("Error fetching questions:", error);
-      // Initialize with empty questions (will use defaults)
-      aiInterviewService.initializeInterview(
-        selectedInterviewer,
-        interviewerPersonality as any,
-        []
-      );
-    }
-
-    // Start the interview with AI speaking first - this will get the greeting
-    startAITurn();
-  }
-
-  // Start AI's turn
-  const startAITurn = async () => {
-    setIsUserTurn(false);
+  const initializeInterview = async (selectedInterviewer: string, selectedType: string, jobLink: string, selectedFocusAreas) => {
     setIsProcessing(true);
 
     try {
-      // Get next statement from AI
-      const statement = await aiInterviewService.getNextInterviewerStatement();
-      setCurrentTranscript(statement);
+      // Start the interview with the AI service
+      const introduction = await aiInterviewService.startInterview(
+        selectedInterviewer,
+        selectedType,
+        selectedFocusAreas,
+        jobLink
+      );
 
-      // Update interview responses
-      setInterviewResponses(aiInterviewService.getResponses());
+      setCurrentTranscript(introduction);
 
-      // Speak the text
+      // Start the timer
+      startTimer();
+
+      // Begin AI speaking
       setIsSpeaking(true);
-      await aiInterviewService.speakText(statement);
+      await aiInterviewService.speakText(introduction);
       setIsSpeaking(false);
 
-      // Check if interview is complete
-      if (aiInterviewService.isInterviewComplete()) {
-        setInterviewComplete(true);
-      } else {
-        // Switch to user's turn
-        setIsUserTurn(true);
-      }
+      // Switch to user's turn
+      setIsUserTurn(true);
+      setIsProcessing(false);
+
     } catch (error) {
-      console.error("Error in AI turn:", error);
-    } finally {
+      console.error("Error initializing interview:", error);
       setIsProcessing(false);
     }
   };
 
-  // Video stream setup
-  useEffect(() => {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices
-        .getUserMedia({ video: true, audio: true })
-        .then((stream) => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream
-          }
-        })
-        .catch((err) => {
-          console.error("Error accessing camera:", err)
-        })
-    }
-
-    return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream
-        stream.getTracks().forEach((track) => track.stop())
-      }
-    }
-  }, [])
 
   // Start user's turn (recording)
   const startUserTurn = () => {
@@ -197,11 +139,6 @@ export default function ConductInterviewPage() {
       };
 
       mediaRecorder.start();
-
-      // Start speech recognition
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-      }
     }
   };
 
@@ -213,13 +150,9 @@ export default function ConductInterviewPage() {
       mediaRecorderRef.current.stop();
     }
 
-    // Stop speech recognition
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
-
     setIsRecording(false);
     setIsProcessing(true);
+    setShowTranscript(false);
 
     // Capture the current transcript before clearing
     const userTranscript = currentTranscript;
@@ -236,9 +169,6 @@ export default function ConductInterviewPage() {
             transcript: userTranscript
           });
 
-          // Process the user's response
-          aiInterviewService.processUserResponse(videoBlob, userTranscript);
-
           resolve();
         };
       } else {
@@ -246,11 +176,37 @@ export default function ConductInterviewPage() {
       }
     });
 
-    // Clear transcript for AI's next response
-    setCurrentTranscript("");
+    try {
+      // Process the user's response through the API
+      const { text, isFinished } = await aiInterviewService.processUserResponse(
+        new Blob(recordedChunks.current, { type: "video/webm" }),
+        userTranscript
+      );
 
-    // Start AI's turn
-    startAITurn();
+      // Update the transcript with AI's response
+      setCurrentTranscript(text);
+
+      // Check if interview is complete
+      if (isFinished) {
+        setInterviewComplete(true);
+        stopTimer();
+      }
+
+      // Begin AI speaking
+      setIsSpeaking(true);
+      await aiInterviewService.speakText(text);
+      setIsSpeaking(false);
+
+      // If interview is not complete, switch back to user's turn
+      if (!isFinished) {
+        setIsUserTurn(true);
+      }
+
+      setIsProcessing(false);
+    } catch (error) {
+      console.error("Error processing user response:", error);
+      setIsProcessing(false);
+    }
   };
 
   // Audio wave animation
@@ -266,10 +222,30 @@ export default function ConductInterviewPage() {
     return () => clearInterval(interval)
   }, [isSpeaking])
 
+  // Handle transcript fade-in effect
+  useEffect(() => {
+    if (!isProcessing && currentTranscript) {
+      // Slight delay before starting the fade animation
+      const timer = setTimeout(() => {
+        setShowTranscript(true);
+      }, 100);
+
+      return () => clearTimeout(timer);
+    } else {
+      setShowTranscript(false);
+    }
+  }, [isProcessing, currentTranscript]);
+
   const handleAnalyzeInterview = async () => {
     try {
       // Prepare all recordings as an array
       const formData = new FormData();
+
+      // Add session ID to the form data
+      const sessionId = aiInterviewService.getSessionId();
+      if (sessionId) {
+        formData.append('session_id', sessionId);
+      }
 
       recordedSessions.current.forEach((session, index) => {
         formData.append(`video_${index}`, session.video);
@@ -277,7 +253,20 @@ export default function ConductInterviewPage() {
       });
 
       formData.append('interviewer', interviewer);
-      formData.append('personality', personality);
+      formData.append('interview_type', interviewType);
+
+      // Save interview data to localStorage to pass to the interview/[id] page
+      const interviewData = {
+        interviewer: interviewer,
+        interviewType: interviewType,
+        responses: aiInterviewService.getResponses(),
+        jobUrl: jobUrl,
+        duration: timer,
+        timestamp: new Date().toISOString(),
+        sessionId: sessionId,
+      };
+
+      localStorage.setItem('interviewData', JSON.stringify(interviewData));
 
       // Save last video locally for demo purposes
       if (recordedSessions.current.length > 0) {
@@ -351,8 +340,15 @@ export default function ConductInterviewPage() {
             </div>
           </div>
 
-          {/* Transcript and Controls */}
+          {/* Transcript and Controls with Timer */}
           <div className="w-full max-w-md">
+            {/* Timer Card */}
+            <Card className="p-4 mb-4 flex items-center justify-center">
+              <Clock className="mr-2 h-5 w-5" />
+              <span className="text-lg font-mono">{formatTime(timer)}</span>
+            </Card>
+
+            {/* Transcript Card */}
             <Card className="p-6">
               <div className="min-h-[120px] mb-4">
                 {isProcessing ? (
@@ -361,7 +357,11 @@ export default function ConductInterviewPage() {
                     <span className="ml-2">Processing...</span>
                   </div>
                 ) : (
-                  <p className="text-lg">{currentTranscript}</p>
+                  <div className="relative overflow-hidden">
+                    <div className={`text-md ${showTranscript ? 'animate-curtain-drop' : 'opacity-0'}`}>
+                      {currentTranscript}
+                    </div>
+                  </div>
                 )}
               </div>
               <div className="flex flex-col gap-3">

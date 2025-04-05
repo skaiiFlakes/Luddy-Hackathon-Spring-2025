@@ -41,14 +41,16 @@ export default function Navbar({ onOpenModal }: NavbarProps) {
           </Link>
         </div>
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
-          <nav className="flex items-center">
-            <Link href="/" className="text-sm font-medium transition-colors hover:text-primary mr-8">
+          <nav className="flex items-center mr-1">
+          <Button variant="ghost" size="md" className="p-2 pl-4">
+            <Link href="/" className="text-sm font-medium transition-colors hover:text-primary mr-2">
               Interviews
-            </Link>
+              </Link>
+          </Button>
           </nav>
           <div className="flex gap-4">
-            <VoiceSettingsDialog />
             <NewInterviewButton />
+            <VoiceSettingsDialog />
           </div>
         </div>
       </div>

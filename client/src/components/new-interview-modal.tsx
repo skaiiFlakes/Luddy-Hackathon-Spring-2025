@@ -18,6 +18,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Switch } from "@/components/ui/switch"
+import { Upload } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface NewInterviewModalProps {
   isOpen: boolean
@@ -33,10 +36,27 @@ const interviewerPersonalityMap: Record<string, string> = {
 
 export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModalProps) {
   const [jobUrl, setJobUrl] = useState("")
+  const [urlError, setUrlError] = useState<string | null>(null)
   const [interviewer, setInterviewer] = useState("todd")
   const [personality, setPersonality] = useState("friendly") // Default matches initial interviewer (todd)
-  const [customQuestions, setCustomQuestions] = useState("")
+  const [interviewType, setInterviewType] = useState("mixed")
+  const [useGeneralResume, setUseGeneralResume] = useState(true)
+  const [hasGeneralResume, setHasGeneralResume] = useState(false)
+  const [specialResume, setSpecialResume] = useState<any>(null)
+  const [behavioralFocusAreas, setBehavioralFocusAreas] = useState<string[]>([])
+  const [technicalFocusAreas, setTechnicalFocusAreas] = useState<string[]>([])
   const router = useRouter()
+
+  // Check for general resume in localStorage on component mount
+  useEffect(() => {
+    const generalResume = localStorage.getItem('generalResume')
+    if (generalResume) {
+      setHasGeneralResume(true)
+    } else {
+      setUseGeneralResume(false)
+      setHasGeneralResume(false)
+    }
+  }, []);
 
   // Update personality whenever interviewer changes
   useEffect(() => {
@@ -44,32 +64,115 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
     setPersonality(defaultPersonality);
   }, [interviewer]);
 
+  // Validate URL format
+  const isValidUrl = (url: string): boolean => {
+    try {
+      new URL(url);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Handle URL change without validation
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setJobUrl(e.target.value);
+  }
+
+  // Validate URL when user unfocuses the input
+  const handleUrlBlur = () => {
+    if (jobUrl && !isValidUrl(jobUrl)) {
+      setUrlError("Please enter a valid URL (e.g., https://example.com/job)");
+    } else {
+      setUrlError(null);
+    }
+  }
+
+  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0]
+      const reader = new FileReader()
+
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setSpecialResume({
+            name: file.name,
+            content: event.target.result,
+            uploadDate: new Date().toISOString()
+          })
+        }
+      }
+
+      reader.readAsDataURL(file)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    router.push(`/interview/new?interviewer=${interviewer}&personality=${personality}`) // Redirect first
-    onClose()
 
-    // try {
-    //   await fetch("http://localhost:5000/api/start-interview", {
-    //     method: "POST",
-    //     headers: {
-    //       "Content-Type": "application/json",
-    //     },
-    //     body: JSON.stringify({
-    //       jobUrl,
-    //       interviewer,
-    //       personality,
-    //       customQuestions: customQuestions.split('\n').filter(q => q.trim() !== '')
-    //     }),
-    //   })
-    // } catch (error) {
-    //   console.error("Error starting interview:", error)
-    // }
+    // Validate URL before submission
+    if (!isValidUrl(jobUrl)) {
+      setUrlError("Please enter a valid URL (e.g., https://example.com/job)");
+      return;
+    }
+
+    // Determine which resume to use
+    let resumeData = null
+    if (useGeneralResume && hasGeneralResume) {
+      resumeData = JSON.parse(localStorage.getItem('generalResume') || 'null')
+    } else if (specialResume) {
+      resumeData = specialResume
+    }
+
+    // Include focus areas in the query if they are applicable
+    let focusAreasParam = '';
+    if (interviewType === 'behavioral' && technicalFocusAreas.length > 0) {
+      focusAreasParam = technicalFocusAreas.join(',');
+    } else if (interviewType === 'technical' && behavioralFocusAreas.length > 0) {
+      focusAreasParam = behavioralFocusAreas.join(',');
+    }
+
+    // Include all parameters in the query
+    const queryParams = new URLSearchParams({
+      interviewer,
+      jobUrl: encodeURIComponent(jobUrl),
+      interviewType,
+      hasResume: resumeData ? 'true' : 'false'
+    })
+
+    // Add focus areas to query params if they exist
+    if (focusAreasParam) {
+      queryParams.append('focusAreas', focusAreasParam);
+    }
+
+    // Store the special resume temporarily in sessionStorage if needed
+    if (specialResume && !useGeneralResume) {
+      sessionStorage.setItem('specialResume', JSON.stringify(specialResume))
+    }
+
+    router.push(`/interview/new?${queryParams.toString()}`)
+    onClose()
   }
 
   const handleInterviewerChange = (name: string) => {
     setInterviewer(name);
     // Personality will be updated by the useEffect
+  };
+
+  const handleBehavioralFocusChange = (area: string, checked: boolean) => {
+    if (checked) {
+      setBehavioralFocusAreas(prev => [...prev, area]);
+    } else {
+      setBehavioralFocusAreas(prev => prev.filter(item => item !== area));
+    }
+  };
+
+  const handleTechnicalFocusChange = (area: string, checked: boolean) => {
+    if (checked) {
+      setTechnicalFocusAreas(prev => [...prev, area]);
+    } else {
+      setTechnicalFocusAreas(prev => prev.filter(item => item !== area));
+    }
   };
 
   return (
@@ -89,9 +192,14 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
                 id="job-url"
                 placeholder="https://example.com/job-posting"
                 value={jobUrl}
-                onChange={(e) => setJobUrl(e.target.value)}
+                onChange={handleUrlChange}
+                onBlur={handleUrlBlur}
                 required
+                className={urlError ? "border-red-500" : ""}
               />
+              {urlError && (
+                <p className="text-xs text-red-500 mt-1">{urlError}</p>
+              )}
             </div>
 
             <div className="grid gap-2">
@@ -132,18 +240,122 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="custom-questions">Custom Questions</Label>
-              <Textarea
-                id="custom-questions"
-                placeholder="How do you handle difficult team dynamics? (one question per line)"
-                value={customQuestions}
-                onChange={(e) => setCustomQuestions(e.target.value)}
-                className="min-h-[50px]"
-              />
+              <Label>Interview Type</Label>
+              <RadioGroup
+                value={interviewType}
+                onValueChange={setInterviewType}
+                className="flex space-x-4"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="behavioral" id="behavioral" />
+                  <Label htmlFor="behavioral">Behavioral</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="technical" id="technical" />
+                  <Label htmlFor="technical">Technical</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="mixed" id="mixed" />
+                  <Label htmlFor="mixed">Mixed</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Focus Areas Section - conditionally rendered based on interview type */}
+            {interviewType === 'technical' && (
+              <div className="grid gap-3">
+                <Label>Behavioral Focus Areas</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Leadership', 'Conflict Resolution', 'Time Management', 'Teamwork', 'Problem Solving', 'Adaptability'].map((area) => (
+                    <div key={area} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`behavioral-${area}`}
+                        checked={behavioralFocusAreas.includes(area)}
+                        onCheckedChange={(checked) => handleBehavioralFocusChange(area, checked as boolean)}
+                      />
+                      <Label htmlFor={`behavioral-${area}`}>{area}</Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {interviewType === 'behavioral' && (
+              <div className="grid gap-3">
+                <Label>Technical Focus Areas</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Javascript/Typescript', 'CSS & Styling', 'Testing', 'React/Vue/Angular', 'Performance Optimization', 'Architecture'].map((area) => (
+                    <div key={area} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`technical-${area}`}
+                        checked={technicalFocusAreas.includes(area)}
+                        onCheckedChange={(checked) => handleTechnicalFocusChange(area, checked as boolean)}
+                      />
+                      <Label htmlFor={`technical-${area}`}>{area}</Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="use-general-resume">Use General Resume</Label>
+                <Switch
+                  id="use-general-resume"
+                  checked={useGeneralResume && hasGeneralResume}
+                  onCheckedChange={setUseGeneralResume}
+                  disabled={!hasGeneralResume}
+                />
+              </div>
+
+              {!hasGeneralResume && (
+                <p className="text-xs text-muted-foreground">
+                  No general resume found. Please upload a resume for this interview.
+                </p>
+              )}
+
+              {(!useGeneralResume || !hasGeneralResume) && (
+                <div className="mt-2">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex items-center gap-2"
+                      onClick={() => {
+                        const input = document.getElementById('special-resume-upload') as HTMLInputElement
+                        input.click()
+                      }}
+                    >
+                      <Upload size={16} />
+                      {specialResume ? 'Replace Resume' : 'Upload Resume'}
+                    </Button>
+                    {specialResume && (
+                      <span className="text-sm">{specialResume.name}</span>
+                    )}
+                  </div>
+                  <input
+                    id="special-resume-upload"
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    className="hidden"
+                    onChange={handleResumeUpload}
+                  />
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter className="flex justify-center sm:justify-center">
-            <Button type="submit">Start Interview</Button>
+            <Button
+              type="submit"
+              disabled={
+                (!hasGeneralResume && !specialResume && (!useGeneralResume || !hasGeneralResume)) ||
+                !!urlError ||
+                !jobUrl
+              }
+            >
+              Start Interview
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

@@ -1,12 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Navbar from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import NewInterviewButton from "@/components/new-interview-button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Upload } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // Sample data for the interviews list
 const interviews = [
@@ -127,9 +129,40 @@ const getScoreColor = (score: number) => {
 export default function InterviewsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const rowsPerPage = 10
+  const [generalResume, setGeneralResume] = useState<string | null>(null)
+  const [rowsPerPage, setRowsPerPage] = useState(5)
   const totalPages = Math.ceil(interviews.length / rowsPerPage)
   const router = useRouter()
+
+  // Load resume from localStorage on component mount
+  useEffect(() => {
+    const savedResume = localStorage.getItem('generalResume')
+    if (savedResume) {
+      setGeneralResume(JSON.parse(savedResume))
+    }
+  }, [])
+
+  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0]
+      const reader = new FileReader()
+
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const resumeData = {
+            name: file.name,
+            content: event.target.result,
+            uploadDate: new Date().toISOString()
+          }
+
+          localStorage.setItem('generalResume', JSON.stringify(resumeData))
+          setGeneralResume(resumeData)
+        }
+      }
+
+      reader.readAsDataURL(file)
+    }
+  }
 
   const handleRowClick = (id: string) => {
     router.push(`/interview/${id}`)
@@ -137,6 +170,11 @@ export default function InterviewsPage() {
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page)
+  }
+
+  const handleRowsPerPageChange = (value: string) => {
+    setRowsPerPage(parseInt(value))
+    setCurrentPage(1) // Reset to first page when changing rows per page
   }
 
   const paginatedInterviews = interviews.slice(
@@ -147,8 +185,68 @@ export default function InterviewsPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar onNewInterview={() => setIsModalOpen(true)} />
-      <div className="container flex-1 flex items-center justify-center py-6">
-        <div className="w-full">
+
+      <div className="container flex-1 flex flex-col items-center py-6">
+      <div className="w-full  mb-6">
+          <Card className="border-dashed border-2">
+            <CardContent className="flex flex-col items-center justify-center py-8">
+              {/* <h3 className="text-lg font-medium mb-2">General Resume</h3> */}
+              <p className="text-sm text-muted-foreground text-center mb-4">
+                Upload your general resume to use across all interviews
+              </p>
+
+              {generalResume ? (
+                <div className="flex flex-col items-center">
+                  <div className="text-sm font-medium mb-2">
+                    {generalResume.name}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const input = document.getElementById('resume-upload') as HTMLInputElement
+                        input.click()
+                      }}
+                    >
+                      Replace
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => {
+                        localStorage.removeItem('generalResume')
+                        setGeneralResume(null)
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    const input = document.getElementById('resume-upload') as HTMLInputElement
+                    input.click()
+                  }}
+                >
+                  <Upload size={16} />
+                  Upload Resume
+                </Button>
+              )}
+
+              <input
+                id="resume-upload"
+                type="file"
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+                onChange={handleResumeUpload}
+              />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="w-full mb-8">
           <Card className="h-full">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Your Interviews</CardTitle>
@@ -157,6 +255,25 @@ export default function InterviewsPage() {
               </p>
             </CardHeader>
             <CardContent className="flex flex-col h-[calc(100%-4rem)]">
+              <div className="flex justify-end mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Rows per page:</span>
+                  <Select
+                    value={rowsPerPage.toString()}
+                    onValueChange={handleRowsPerPageChange}
+                  >
+                    <SelectTrigger className="w-[70px] h-8">
+                      <SelectValue placeholder={rowsPerPage.toString()} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="15">15</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
               <div className="rounded-md border">
                 <Table>
@@ -165,16 +282,16 @@ export default function InterviewsPage() {
                       <TableHead className="w-[40%]">Job Title</TableHead>
                       <TableHead className="w-[25%]">Date & Time</TableHead>
                       <TableHead className="w-[15%]">Overall Score</TableHead>
-                      {/* <TableHead className="w-[20%]">Actions</TableHead> */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {Array.from({ length: Math.max(10, paginatedInterviews.length) }).map((_, index) => {
+                    {Array.from({ length: Math.min(rowsPerPage, Math.max(1, paginatedInterviews.length)) }).map((_, index) => {
                       const interview = paginatedInterviews[index]
                       return (
                         <TableRow
                           key={interview?.id || `empty-${currentPage}-${index}`}
-                          className="hover:bg-muted/50"
+                          className="hover:bg-muted/50 cursor-pointer"
+                          onClick={() => interview && handleRowClick(interview.id)}
                         >
                           <TableCell className="font-medium">{interview?.jobTitle || "-"}</TableCell>
                           <TableCell>{interview?.dateTime || "-"}</TableCell>
@@ -185,19 +302,6 @@ export default function InterviewsPage() {
                               "-"
                             )}
                           </TableCell>
-                          {/* <TableCell>
-                            {interview ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleRowClick(interview.id)}
-                              >
-                                Go to Page
-                              </Button>
-                            ) : (
-                              "-"
-                            )}
-                          </TableCell> */}
                         </TableRow>
                       )
                     })}
@@ -206,27 +310,31 @@ export default function InterviewsPage() {
               </div>
 
               {totalPages > 1 && (
-                <div className="flex justify-center mt-4">
-                  {Array.from({ length: totalPages }).map((_, index) => (
-                    <Button
-                      key={index}
-                      variant={currentPage === index + 1 ? "default" : "outline"}
-                      size="sm"
-                      className="mx-1"
-                      onClick={() => handlePageChange(index + 1)}
-                    >
-                      {index + 1}
-                    </Button>
-                  ))}
+                <div className="flex justify-between items-center mt-4">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {((currentPage - 1) * rowsPerPage) + 1} to {Math.min(currentPage * rowsPerPage, interviews.length)} of {interviews.length} entries
+                  </div>
+                  <div className="flex">
+                    {Array.from({ length: totalPages }).map((_, index) => (
+                      <Button
+                        key={index}
+                        variant={currentPage === index + 1 ? "default" : "outline"}
+                        size="sm"
+                        className="mx-1"
+                        onClick={() => handlePageChange(index + 1)}
+                      >
+                        {index + 1}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               )}
-
             </CardContent>
           </Card>
+        </div>
 
-          <div className="flex flex-col items-center mt-12">
-            <NewInterviewButton />
-          </div>
+        <div className="flex flex-col items-center mt-4">
+          <NewInterviewButton />
         </div>
       </div>
     </div>

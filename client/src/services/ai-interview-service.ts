@@ -1,36 +1,30 @@
 import { SourceTextModule } from "vm";
 
-type InterviewState = 'greeting' | 'asking' | 'responding' | 'closing';
-type InterviewerPersonality = 'friendly' | 'professional' | 'challenging';
-
-export interface InterviewQuestion {
-    question: string;
-    asked: boolean;
-}
-
 export interface InterviewResponse {
     text: string;
     type: 'ai' | 'user';
     timestamp: number;
+    startTimestamp?: number;
+    endTimestamp?: number;
+    videoBlob?: Blob;
+    audioBlob?: Blob;
 }
 
 export interface AudioConfig {
     voice: string;
     rate: number;
     pitch: number;
-    elevenlabsVoiceId?: string; // Add ElevenLabs voice ID
+    elevenlabsVoiceId?: string;
 }
 
 class AIInterviewService {
-    private interviewState: InterviewState = 'greeting';
-    private personality: InterviewerPersonality = 'professional';
-    private questions: InterviewQuestion[] = [];
     private responses: InterviewResponse[] = [];
-    private currentQuestionIndex: number = 0;
-    private interviewerName: string = 'todd';
+    private sessionId: string | null = null;
     private audioContext: AudioContext | null = null;
     private elevenlabsApiKey: string | null = null;
     private useElevenlabs: boolean = false;
+    private interviewerName: string = 'todd';
+    private interviewFinished: boolean = false;
 
     constructor() {
         if (typeof window !== 'undefined') {
@@ -38,116 +32,159 @@ class AIInterviewService {
         }
     }
 
-    // Initialize the interview with provided parameters
-    public initializeInterview(
-        interviewerName: string,
-        personality: InterviewerPersonality,
-        customQuestions: string[]
-    ): void {
-        this.interviewerName = interviewerName;
-        this.personality = personality;
-        this.interviewState = 'greeting';  // Start in greeting state
-        this.currentQuestionIndex = 0;
+    // Start a new interview session
+    public async startInterview(
+        interviewer: string,
+        interviewType: string,
+        focusAreas: string[] = [],
+        jobLink: string = ''
+    ): Promise<string> {
+        this.interviewerName = interviewer;
         this.responses = [];
+        this.interviewFinished = false;
 
-        // If custom questions are provided, use them
-        // if (customQuestions && customQuestions.length > 0) {
-        //   this.questions = customQuestions.map(q => ({ question: q, asked: false }));
-        // } else {
-        // Default questions based on personality
-        this.setDefaultQuestions();
-        // }
-        console.log("questions:", this.questions);
+        // Call the API to start a new interview
+        try {
+            const response = await fetch('http://localhost:5000/api/start_interview', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    interviewer,
+                    interview_type: interviewType,
+                    focus_areas: focusAreas,
+                    job_link: jobLink,
+                }),
+            });
 
+            if (!response.ok) {
+                throw new Error(`Failed to start interview: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            this.sessionId = data.session_id;
+
+            // Store the introduction as the first AI response
+            const introductionResponse: InterviewResponse = {
+                text: data.introduction,
+                type: 'ai',
+                timestamp: Date.now(),
+                startTimestamp: Date.now()
+            };
+
+            this.responses.push(introductionResponse);
+
+            return data.introduction;
+        } catch (error) {
+            console.error('Error starting interview:', error);
+            throw error;
+        }
     }
 
-    private setDefaultQuestions(): void {
-        const baseQuestions = [
-            "Tell me about yourself and your background.",
-            //   "What are your greatest strengths and weaknesses?",
-            //   "Why are you interested in this position?",
-            //   "Describe a challenging project you've worked on.",
-            //   "Where do you see yourself in five years?"
-        ];
-
-        // Add personality-specific questions
-        switch (this.personality) {
-            case 'friendly':
-                baseQuestions.push(
-                    "What do you like to do outside of work?",
-                    "What's your ideal work environment?"
-                );
-                break;
-            case 'professional':
-                baseQuestions.push(
-                    "How do you handle tight deadlines?",
-                    "Describe your approach to problem-solving."
-                );
-                break;
-            case 'challenging':
-                baseQuestions.push(
-                    "Tell me about a time you failed and what you learned.",
-                    "How would you handle a disagreement with a team member?",
-                    "What's a gap in your skill set you're working to address?"
-                );
-                break;
+    // Process user response and get the next AI step
+    public async processUserResponse(audioBlob: Blob, transcript: string): Promise<{text: string, isFinished: boolean}> {
+        if (!this.sessionId) {
+            throw new Error('No active interview session');
         }
 
-        this.questions = baseQuestions.map(q => ({ question: q, asked: false }));
-    }
-
-    // Get the next interviewer statement based on current state
-    public async getNextInterviewerStatement(): Promise<string> {
-        let statement = '';
-
-        switch (this.interviewState) {
-            case 'greeting':
-                statement += this.generateGreeting();
-                this.interviewState = 'asking';  // Immediately advance to asking state
-                break;
-            case 'responding':
-                statement += this.generateResponse() + ' ';
-                // Important fix: After responding, immediately transition to asking state
-                // This prevents getting stuck in the responding state
-                this.interviewState = this.hasMoreQuestions() ? 'asking' : 'closing';
-            case 'asking':
-                statement += this.askNextQuestion();
-                break;
-            case 'closing':
-                statement += this.generateClosing();
-                break;
-        }
-
-        console.log(statement)
-
-        // Add to responses
-        this.responses.push({
-            text: statement,
-            type: 'ai',
-            timestamp: Date.now()
-        });
-
-        return statement;
-    }
-
-    // Process user response and move to next state
-    public processUserResponse(audioBlob: Blob, transcript: string): void {
-        // Add to responses
+        // Add user response to the responses array
         this.responses.push({
             text: transcript,
             type: 'user',
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            videoBlob: audioBlob,
+            audioBlob: audioBlob
         });
 
-        // After user responds, directly set state to 'responding'
-        // This ensures we'll provide a response and then move to the next question
-        this.interviewState = 'responding';
+        // Call the API to get the next response
+        try {
+            const responseApiUrl = `http://localhost:5000/api/interview/${this.sessionId}/next_response`;
+            const responseResult = await fetch(responseApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    transcription: transcript
+                }),
+            });
+
+            if (!responseResult.ok) {
+                throw new Error(`Failed to get next response: ${responseResult.statusText}`);
+            }
+
+            const responseData = await responseResult.json();
+
+            // Add AI response to the responses array
+            const aiResponse: InterviewResponse = {
+                text: responseData.interviewer_reply,
+                type: 'ai',
+                timestamp: Date.now(),
+                startTimestamp: Date.now()
+            };
+
+            this.responses.push(aiResponse);
+
+            // If it's a follow-up, return the reply directly
+            if (responseData.is_follow_up) {
+                return {
+                    text: responseData.interviewer_reply,
+                    isFinished: false
+                };
+            }
+
+            // If it's not a follow-up, get the next question
+            const questionApiUrl = `http://localhost:5000/api/interview/${this.sessionId}/next_question`;
+            const questionResult = await fetch(questionApiUrl);
+
+            if (!questionResult.ok) {
+                throw new Error(`Failed to get next question: ${questionResult.statusText}`);
+            }
+
+            const questionData = await questionResult.json();
+
+            let nextText: string;
+            let isFinished: boolean = questionData.finished;
+
+            if (questionData.finished) {
+                nextText = questionData.closer;
+                this.interviewFinished = true;
+            } else {
+                nextText = questionData.question;
+            }
+
+            // Add the question or closer as an AI response
+            const questionResponse: InterviewResponse = {
+                text: nextText,
+                type: 'ai',
+                timestamp: Date.now(),
+                startTimestamp: Date.now()
+            };
+
+            this.responses.push(questionResponse);
+
+            return {
+                text: nextText,
+                isFinished: isFinished
+            };
+        } catch (error) {
+            console.error('Error processing user response:', error);
+            throw error;
+        }
+    }
+
+    // Update the timestamp for the last AI response (marks when it finished speaking)
+    public updateLastAIResponseEndTime(endTimestamp: number): void {
+        const lastAIResponse = [...this.responses].reverse().find(r => r.type === 'ai');
+        if (lastAIResponse) {
+            lastAIResponse.endTimestamp = endTimestamp;
+        }
     }
 
     // Check if the interview is complete
     public isInterviewComplete(): boolean {
-        return this.interviewState === 'closing' &&
-            this.responses[this.responses.length - 1]?.type === 'ai';
+        return this.interviewFinished;
     }
 
     // Set ElevenLabs API key
@@ -156,13 +193,13 @@ class AIInterviewService {
         this.useElevenlabs = true;
     }
 
-    // Get audio configuration based on interviewer personality
+    // Get audio configuration based on interviewer
     public getAudioConfig(): AudioConfig {
         const voiceConfigs: Record<string, AudioConfig> = {
             'todd': {
-                voice: this.personality === 'challenging' ? 'en-US-GuyNeural' : 'en-US-BryanNeural',
+                voice: 'en-US-BryanNeural',
                 rate: 0.9,
-                pitch: this.personality === 'professional' ? 0 : 1,
+                pitch: 1,
                 elevenlabsVoiceId: '5Q0t7uMcjvnagumLfvZi' // Liam voice (friendly male)
             },
             'jeff': {
@@ -175,7 +212,7 @@ class AIInterviewService {
                 voice: 'en-US-JennyNeural',
                 rate: 1.1,
                 pitch: 2,
-                elevenlabsVoiceId: 'jsCqWAovK2LkecY7zXl4' // Freya voice (female)
+                elevenlabsVoiceId: '5PWbsfogbLtky5sxqtBz'//'jsCqWAovK2LkecY7zXl4'  // Freya voice (female)
             },
             'creep': {
                 voice: 'en-US-JennyNeural',
@@ -240,6 +277,8 @@ class AIInterviewService {
         return new Promise((resolve) => {
             audio.onended = () => {
                 URL.revokeObjectURL(audioUrl);
+                // Update the end timestamp for the last AI response
+                this.updateLastAIResponseEndTime(Date.now());
                 resolve();
             };
             audio.play();
@@ -260,6 +299,8 @@ class AIInterviewService {
 
             const speakNextSentence = () => {
                 if (sentenceIndex >= sentences.length) {
+                    // Update the end timestamp for the last AI response
+                    this.updateLastAIResponseEndTime(Date.now());
                     resolve();
                     return;
                 }
@@ -308,138 +349,9 @@ class AIInterviewService {
         return this.responses;
     }
 
-    // Generate appropriate greeting based on personality
-    private generateGreeting(): string {
-        const nameCapitalized = this.interviewerName.charAt(0).toUpperCase() + this.interviewerName.slice(1);
-
-        switch (this.personality) {
-            case 'creepy':
-                return `Hey, pookie bear. My name is ${nameCapitalized}. I'll be conducting your interview today. Wink wink. Are you ready to begin this interview?`;
-            case 'friendly':
-                return `Hi there! I'm ${nameCapitalized}. It's great to meet you! I'm excited to learn more about you and your experience today. Let's have a casual chat about your background and see how you might fit with our team. Are you ready to begin this interview?`;
-            case 'professional':
-                return `Hello, I'm ${nameCapitalized}. Thank you for joining me today for this interview. I'd like to discuss your qualifications and experience to determine if you're a good match for the position. Are you ready to begin this interview?`;
-            case 'challenging':
-                return `Good day. My name is ${nameCapitalized}. I'll be conducting your interview today. I'd like to warn you that I'll be asking some challenging questions to really understand your capabilities and how you handle pressure. Are you ready to begin this interview?`;
-            default:
-                return `Hello, I'm ${nameCapitalized}. Let's begin the interview.`;
-        }
-    }
-
-    // Ask the next question in the list
-    private askNextQuestion(): string {
-        if (!this.hasMoreQuestions()) {
-            this.interviewState = 'closing';
-            return this.generateClosing();
-        }
-
-        const question = this.questions[this.currentQuestionIndex];
-        question.asked = true;
-        this.currentQuestionIndex++;
-
-        return question.question;
-    }
-
-    // Generate an appropriate response to the user's answer
-    private generateResponse(): string {
-        const lastUserResponse = this.responses.filter(r => r.type === 'user').pop();
-
-        if (!lastUserResponse) {
-            return "I see. Let's continue.";
-        }
-        const friendlyResponses = [
-            "That's great to hear! I love that.",
-            "Wow, that's really cool! Thanks for sharing.",
-            "That's really interesting! Thanks for sharing that with me.",
-            "I love that! It's always nice to hear different perspectives.",
-            "That's a unique take! I appreciate you sharing that.",
-            "I appreciate your perspective. It's always good to hear different viewpoints.",
-            "That's a really interesting point! Thank you for sharing.",
-            "That's a great thought! I appreciate your insight.",
-            "I love that perspective! Thanks for sharing.",
-            "That's a unique perspective! Thank you for sharing.",
-            "I appreciate your honesty. That's a great insight.",
-            "That's a great point! I appreciate your perspective.",
-            "That's great to hear!",
-            "Wow, that's cool!",
-            "That's interesting!",
-            "I love that!",
-            "That's unique!",
-            "Good perspective!",
-            "Interesting point!",
-            "Great thought!",
-            "Love that perspective!",
-            "Great point!",
-        ]
-        const professionalResponses = [
-            "Thank you for sharing your thoughts. That's a valuable perspective.",
-            "I appreciate your insight. It helps me understand your approach better.",
-            "That's a well-considered response. Thank you for your honesty.",
-            "Thank you for that detailed answer. It gives me a clearer picture of your experience.",
-            "I appreciate your thoroughness. It shows your commitment to the role.",
-            "That's a thoughtful response. Thank you for your clarity.",
-            "Thank you for your detailed answer. It helps me understand your approach.",
-            "I appreciate your thoroughness. It shows your commitment to the role.",
-            "That's a well-considered response. Thank you for your honesty.",
-            "Thank you for sharing your thoughts. That's a valuable perspective.",
-            "That's a thoughtful response. Thank you for your clarity.",
-            "I appreciate your insight. It helps me understand your approach better.",
-            "That's a well-articulated response. Thank you for your clarity.",
-            "Thank you for sharing your thoughts.",
-            "That's a valuable perspective.",
-            "I appreciate your insight.",
-            "That's a well-considered response.",
-            "Thank you for your honesty.",
-            "I appreciate your thoroughness.",
-            "That's a thoughtful response.",
-            "Thank you for your clarity.",
-            "That's a well-articulated response.",
-        ]
-        const challengingResponses = [
-            "Interesting answer.",
-            "Hmmm, okay.",
-            "That's one way to look at it.",
-            "I see your point.",
-            "That's a unique perspective.",
-            "Interesting approach.",
-            "That's a different take.",
-            "I appreciate your honesty.",
-            "That's a bold statement.",
-            "That's a thought-provoking response.",
-            "That's a challenging perspective.",
-            "That's a unique take on it.",
-            "",
-        ]
-
-        // Simple response based on personality
-        switch (this.personality) {
-            case 'friendly':
-                return friendlyResponses[Math.floor(Math.random() * friendlyResponses.length)];
-            case 'professional':
-                return professionalResponses[Math.floor(Math.random() * professionalResponses.length)];
-            case 'challenging':
-                return challengingResponses[Math.floor(Math.random() * challengingResponses.length)];
-            default:
-                return "I understand. Let's move on.";
-        }
-    }
-
-    // Generate closing statement
-    private generateClosing(): string {
-        switch (this.personality) {
-            case 'friendly':
-                return "It's been a pleasure talking with you today! I really enjoyed our conversation. Thank you for your time, and we'll be in touch soon about next steps. Have a great day!";
-            case 'professional':
-                return "Thank you for your time today. We will review your qualifications and be in touch regarding the next steps in our hiring process. Do you have any questions before we conclude?";
-            case 'challenging':
-                return "We've come to the end of our interview. I appreciate your responses to my challenging questions. Our team will evaluate your performance and contact you with the results. Thank you for your time.";
-            default:
-                return "That concludes our interview. Thank you for your time.";
-        }
-    }
-
-    private hasMoreQuestions(): boolean {
-        return this.currentQuestionIndex < this.questions.length;
+    // Get the session ID
+    public getSessionId(): string | null {
+        return this.sessionId;
     }
 }
 
