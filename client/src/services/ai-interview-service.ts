@@ -272,23 +272,28 @@ class AIInterviewService {
         return voiceConfigs[this.interviewerName] || voiceConfigs.todd;
     }
 
-    // Play text as speech using ElevenLabs or Web Speech API
+    // Play text as speech using ElevenLabs
     public async speakText(text: string): Promise<void> {
-        const config = this.getAudioConfig();
-
-        // Try ElevenLabs if enabled and API key is available
-        if (this.useElevenlabs && this.elevenlabsApiKey && config.elevenlabsVoiceId) {
-            try {
-                await this.speakWithElevenlabs(text, config.elevenlabsVoiceId);
-                return;
-            } catch (error) {
-                console.error("Error with ElevenLabs TTS, falling back to Web Speech API:", error);
-                // Fall back to Web Speech API
-            }
+        // Only proceed if ElevenLabs is enabled and API key is available
+        if (!this.useElevenlabs || !this.elevenlabsApiKey) {
+            // If ElevenLabs is not available, just update the timestamp and continue
+            this.updateLastAIResponseEndTime(Date.now());
+            return;
         }
 
-        // Use the Web Speech API as fallback
-        return this.speakWithWebSpeechAPI(text, config);
+        const config = this.getAudioConfig();
+        if (!config.elevenlabsVoiceId) {
+            this.updateLastAIResponseEndTime(Date.now());
+            return;
+        }
+
+        try {
+            await this.speakWithElevenlabs(text, config.elevenlabsVoiceId);
+        } catch (error) {
+            console.error("Error with ElevenLabs TTS:", error);
+            // Update the end timestamp for the last AI response even if speech fails
+            this.updateLastAIResponseEndTime(Date.now());
+        }
     }
 
     // Speak text using ElevenLabs API
@@ -330,65 +335,6 @@ class AIInterviewService {
             console.error('Error with ElevenLabs TTS:', error);
             throw error;
         }
-    }
-
-    // Enhanced Web Speech API implementation
-    private speakWithWebSpeechAPI(text: string, config: AudioConfig): Promise<void> {
-        return new Promise((resolve) => {
-            if (!('speechSynthesis' in window)) {
-                console.error("Browser doesn't support speech synthesis");
-                resolve();
-                return;
-            }
-
-            const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-            let sentenceIndex = 0;
-
-            const speakNextSentence = () => {
-                if (sentenceIndex >= sentences.length) {
-                    // Update the end timestamp for the last AI response
-                    this.updateLastAIResponseEndTime(Date.now());
-                    resolve();
-                    return;
-                }
-
-                const sentence = sentences[sentenceIndex].trim();
-                sentenceIndex++;
-
-                const utterance = new SpeechSynthesisUtterance(sentence);
-
-                // Load voices if not already loaded
-                let voices = window.speechSynthesis.getVoices();
-                if (!voices.length) {
-                    window.speechSynthesis.onvoiceschanged = () => {
-                        voices = window.speechSynthesis.getVoices();
-                        setVoiceAndSpeak();
-                    };
-                } else {
-                    setVoiceAndSpeak();
-                }
-
-                function setVoiceAndSpeak() {
-                    // Find a matching voice or use the first available one
-                    const voiceName = config.voice.split('-')[2].replace('Neural', '');
-                    utterance.voice = voices.find(voice =>
-                        voice.name.includes(voiceName) ||
-                        voice.name.toLowerCase().includes(voiceName.toLowerCase())
-                    ) || voices[0];
-
-                    utterance.rate = config.rate;
-                    utterance.pitch = config.pitch;
-                    // Add natural pauses between sentences
-                    utterance.onend = () => {
-                        setTimeout(speakNextSentence, 250); // Add a small pause between sentences
-                    };
-
-                    window.speechSynthesis.speak(utterance);
-                }
-            };
-
-            speakNextSentence();
-        });
     }
 
     // Get all interview responses
