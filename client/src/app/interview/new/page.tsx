@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 
 export default function ConductInterviewPage() {
-  const IS_TEST = true
+  const IS_TEST = false
   const isInitializedRef = useRef(false)
 
   const [isRecording, setIsRecording] = useState(false)
@@ -431,7 +431,7 @@ export default function ConductInterviewPage() {
             attribute: "Gestures",
             timestamp: "00:00",
             score: Math.min(100, coachData.gestures.length * 20),
-            explanation: `Observed gestures: ${coachData.gestures.join(", ")}`
+            explanation: `Observed gestures: ${coachData.gestures.join(", ")}.`
           }]
         }
       };

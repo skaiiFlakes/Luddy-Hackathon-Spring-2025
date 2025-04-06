@@ -23,8 +23,8 @@ export const transformFeedbackData = (feedbackData: FeedbackResponse) => {
     },
     qna_feedback: feedbackData.answers.map(answer => ({
       question: answer.question,
-      wentWell: answer.evaluation.strengths.join('. '),
-      improvements: answer.evaluation.areas_for_improvement.join('. ')
+      wentWell: answer.evaluation.strengths,
+      improvements: answer.evaluation.areas_for_improvement
     })),
     tone_voice: Object.entries(feedbackData.sentiment_analysis.emotion_analysis).map(([emotion, data]) => ({
       attribute: emotion.charAt(0).toUpperCase() + emotion.slice(1),

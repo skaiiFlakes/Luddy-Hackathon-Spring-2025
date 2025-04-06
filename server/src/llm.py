@@ -189,8 +189,6 @@ class Interviewer:
             {'role': 'system', 'content': prompt}
         ]
 
-        messages += self.history
-
         response = ollama.chat(
             messages = messages,
             options = CFG,
