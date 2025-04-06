@@ -6,6 +6,7 @@ import base64
 import ollama
 
 from flask       import Flask, request, jsonify
+from flask_cors  import CORS
 from uuid        import uuid4
 from pathlib     import Path
 from datetime    import datetime
@@ -16,6 +17,18 @@ from scraping      import scrape_job, save_to_json
 from coach         import coach_video_file
 
 app = Flask(__name__)
+
+CORS(
+    app,
+    resources = {
+        r"/api/*": {"origins": "*"}
+    }, 
+    supports_credentials=True
+)
+
+app.config['CORS_HEADERS'] = 'Content-Type'
+app.config['CORS_SUPPORTS_CREDENTIALS'] = True
+
 ctx = {}
 
 UPLOAD_FOLDER = 'uploads'
@@ -78,12 +91,13 @@ def start_interview():
     job_link       = request.form['job_link']
     
     # https://careers.servicenow.com/jobs/744000052094688/sr-manager-product-design-crm-industry-workflows/
-    job_data = scrape_job(job_link)
-    save_to_json(job_data, "../static/job_data.json") 
+    # job_data = scrape_job(job_link)
+    # save_to_json(job_data, "../static/job_data.json") 
 
     ctx[uuid] = Interviewer(
         interviewer,
         interview_type,
+        job_link,
         open("../static/job_data.json").read(),
         text,
         json.loads(focus_areas)

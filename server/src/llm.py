@@ -57,6 +57,7 @@ class Interviewer:
 
     # Candidate information.
     job_desc : str;
+    link     : str;
     resume   : str;
     keywords : list[str];
 
@@ -70,10 +71,11 @@ class Interviewer:
     start     : str = "N/A";
     end       : str = "N/A";
 
-    def __init__(self, name, mode, job_desc, resume, keywords):
+    def __init__(self, name, mode, link, job_desc, resume, keywords):
         self.persona  = PERSONAS[name]
         self.name     = name
         self.mode     = mode
+        self.link     = link
         self.job_desc = job_desc
         self.resume   = resume
         self.keywords = keywords
@@ -298,6 +300,8 @@ class Interviewer:
             "overall_rating" : get_rating_from_grade(grade)
         }
 
+        job_desc = json.loads(self.job_desc)
+        # job_url job_title job_description company
         output = {
             "answers"   : answers,
             "questions" : questions,
@@ -306,7 +310,10 @@ class Interviewer:
                 "interview_type"  : self.mode,
                 "start_time"      : self.start,
                 "end_time"        : self.end,
-                "job_description" : json.loads(self.job_desc)
+                "job_url"         : self.link,
+                "job_title"       : job_desc['role'],
+                "job_description" : job_desc['job_description'],
+                "company"         : job_desc['company']
             },
             "analysis"           : {},
             "full_transcript"    : history,
