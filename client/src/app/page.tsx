@@ -9,37 +9,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Upload } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { InterviewData } from "@/types/interview"
+import { transformInterviewList, InterviewListItem } from "@/utils/interview"
+import { getScoreColor } from "@/utils/score"
 
-interface InterviewData {
-  interviewer: string;
-  personality: string;
-  responses: any[];
-  jobUrl: string;
-  duration: number;
-  timestamp: string;
-  analysis?: {
-    metadata?: {
-      company: string;
-      job_title: string;
-      job_url: string;
-    };
-    evaluation?: {
-      overall_score: number;
-    };
-  };
-}
-
-// Function to determine color based on score
-const getScoreColor = (score: number) => {
-  if (score >= 85) return "text-green-500"
-  if (score >= 70) return "text-yellow-500"
-  return "text-red-500"
+interface ResumeData {
+  name: string;
+  content: string;
+  uploadDate: string;
 }
 
 export default function InterviewsPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [generalResume, setGeneralResume] = useState<string | null>(null)
+  const [generalResume, setGeneralResume] = useState<ResumeData | null>(null)
   const [rowsPerPage, setRowsPerPage] = useState(5)
   const [interviews, setInterviews] = useState<Record<string, InterviewData>>({})
   const router = useRouter()
@@ -64,9 +46,9 @@ export default function InterviewsPage() {
 
       reader.onload = (event) => {
         if (event.target?.result) {
-          const resumeData = {
+          const resumeData: ResumeData = {
             name: file.name,
-            content: event.target.result,
+            content: event.target.result as string,
             uploadDate: new Date().toISOString()
           }
 
@@ -92,24 +74,7 @@ export default function InterviewsPage() {
     setCurrentPage(1) // Reset to first page when changing rows per page
   }
 
-  const formatDateTime = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    return `${date.toLocaleDateString()} • ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  };
-
-  const calculateOverallScore = (interview: InterviewData): number => {
-    if (!interview.analysis?.evaluation?.overall_score) return 0;
-    return interview.analysis.evaluation.overall_score;
-  };
-
-  const interviewList = Object.entries(interviews).map(([id, interview]) => ({
-    id,
-    jobTitle: interview.analysis?.metadata?.job_title || "Unknown Job Title",
-    company: interview.analysis?.metadata?.company || "Unknown Company",
-    dateTime: formatDateTime(interview.timestamp),
-    score: calculateOverallScore(interview)
-  }));
-
+  const interviewList = transformInterviewList(interviews)
   const totalPages = Math.ceil(interviewList.length / rowsPerPage)
   const paginatedInterviews = interviewList.slice(
     (currentPage - 1) * rowsPerPage,
@@ -118,7 +83,7 @@ export default function InterviewsPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar onNewInterview={() => setIsModalOpen(true)} />
+      <Navbar />
 
       <div className="container flex-1 flex flex-col items-center py-6">
         <div className="w-full mb-6">
@@ -195,8 +160,8 @@ export default function InterviewsPage() {
                       <SelectItem value="15">15 rows</SelectItem>
                     </SelectContent>
                   </Select>
-                  <NewInterviewButton onOpenModal={() => setIsModalOpen(true)} />
-              </div>
+                  <NewInterviewButton />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -219,8 +184,11 @@ export default function InterviewsPage() {
                       <TableCell>{interview.company}</TableCell>
                       <TableCell>{interview.jobTitle}</TableCell>
                       <TableCell>{interview.dateTime}</TableCell>
-                      <TableCell className={`text-right font-medium ${getScoreColor(interview.score)}`}>
-                        {interview.score}%
+                      <TableCell className={`text-right font-medium`}>
+                        <div className="flex items-center gap-2 justify-end">
+                          <span className={`${getScoreColor(interview.score)} h-2 w-2 rounded-full`}></span>
+                          {interview.score}%
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -234,18 +202,20 @@ export default function InterviewsPage() {
                   ))}
                 </TableBody>
               </Table>
-              {(totalPages > 1) ? (<div className="flex justify-center mt-4 gap-2">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <Button
-                    key={page}
-                    variant={currentPage === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handlePageChange(page)}
-                  >
-                    {page}
-                  </Button>
-                ))}
-              </div>) : <></>}
+              {totalPages > 1 && (
+                <div className="flex justify-center mt-4 gap-2">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handlePageChange(page)}
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

@@ -6,11 +6,7 @@ import { PlusCircle } from "lucide-react"
 import NewInterviewButton from "@/components/new-interview-button"
 import { VoiceSettingsDialog } from "@/components/voice-settings-dialog"
 
-interface NavbarProps {
-  onOpenModal: () => void;
-}
-
-export default function Navbar({ onOpenModal }: NavbarProps) {
+export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -42,7 +38,7 @@ export default function Navbar({ onOpenModal }: NavbarProps) {
         </div>
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
           <nav className="flex items-center mr-1">
-          <Button variant="ghost" size="md" className="p-2 pl-4">
+          <Button variant="ghost" className="p-2 pl-4">
             <Link href="/" className="text-sm font-medium transition-colors hover:text-primary mr-2">
               Interviews
               </Link>

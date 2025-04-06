@@ -27,6 +27,7 @@ class AIInterviewService {
     private interviewerName: string = 'todd';
     private interviewFinished: boolean = false;
     private host = "http://localhost:5000";
+    private isTest: boolean = false;
 
     constructor() {
         if (typeof window !== 'undefined') {
@@ -39,11 +40,13 @@ class AIInterviewService {
         interviewer: string,
         interviewType: string,
         focusAreas: string[] = [],
-        jobLink: string = ''
+        jobLink: string = '',
+        isTest: boolean = false
     ): Promise<string> {
         this.interviewerName = interviewer;
         this.responses = [];
         this.interviewFinished = false;
+        this.isTest = isTest;
 
         // Call the API to start a new interview
         try {
@@ -173,7 +176,7 @@ class AIInterviewService {
             this.responses.push(aiResponse);
 
             // If it's a follow-up, return the reply directly
-            if (responseData.is_follow_up) {
+            if (responseData.is_follow_up && !this.isTest) {
                 return {
                     text: responseData.interviewer_reply,
                     isFinished: false

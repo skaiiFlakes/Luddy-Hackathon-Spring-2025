@@ -1,186 +1,26 @@
 "use client"
 import { useParams } from "next/navigation"
 import Dashboard from "@/components/dashboard"
-import { useEffect, useState } from "react"
-import { InterviewResponse } from "@/services/ai-interview-service"
-
-interface InterviewData {
-  interviewer: string;
-  personality: string;
-  responses: InterviewResponse[];
-  jobUrl: string;
-  duration: number;
-  timestamp: string;
-  analysis?: any;
-  videoBlob?: Blob;
-}
-
-interface FeedbackResponse {
-  analysis: {
-    overall_feedback: string;
-    performance_metrics: {
-      average_score: number;
-      overall_rating: string;
-    };
-  };
-  answers: Array<{
-    answer: string;
-    evaluation: {
-      areas_for_improvement: string[];
-      grade: string;
-      strengths: string[];
-      suggestions: string[];
-    };
-    question: string;
-    question_id: number;
-  }>;
-  full_transcript: Array<{
-    content: string;
-    question_id: number;
-    role: string;
-    timestamp: string;
-  }>;
-  metadata: {
-    end_time: string;
-    interview_type: string;
-    interviewer: string;
-    start_time: string;
-    company: string;
-    job_url: string;
-    job_title: string;
-    job_description: string;
-  };
-  questions: string[];
-  sentiment_analysis: {
-    dominant_emotion: string;
-    emotion_analysis: {
-      [key: string]: {
-        evidence: string;
-        score: number;
-      };
-    };
-    feedback: string;
-  };
-}
-
-// Fallback data for when API calls fail
-const fallbackFeedbackData: FeedbackResponse = {
-  analysis: {
-    overall_feedback: "Strong interview performance with room for improvement in providing concrete examples.",
-    performance_metrics: {
-      average_score: 0.85,
-      overall_rating: "Good"
-    }
-  },
-  answers: [{
-    answer: "Sample answer",
-    evaluation: {
-      areas_for_improvement: ["More specific examples", "Better time management"],
-      grade: "B",
-      strengths: ["Clear communication", "Good technical knowledge"],
-      suggestions: ["Provide more concrete examples", "Research the company more thoroughly"]
-    },
-    question: "Sample question",
-    question_id: 0
-  },{
-    answer: "Sample answer",
-    evaluation: {
-      areas_for_improvement: ["More specific examples", "Better time management"],
-      grade: "B",
-      strengths: ["Clear communication", "Good technical knowledge"],
-      suggestions: ["Provide more concrete examples", "Research the company more thoroughly"]
-    },
-    question: "Sample question",
-    question_id: 0
-  }],
-  full_transcript: [{
-    content: "Sample transcript",
-    question_id: 0,
-    role: "interviewer",
-    timestamp: "20250406_020323"
-  }],
-  metadata: {
-    end_time: "N/A",
-    interview_type: "technical",
-    interviewer: "todd",
-    start_time: "20250406_020249",
-    company: "Google",
-    job_url: "https://www.google.com/about/careers/applications/jobs/results/134028773082178246-software-engineer-engineering-productivity-silicon",
-    job_title: "Software Engineer - Engineering Productivity, Silicon",
-    job_description: "Sample job description for Software Engineer position at Google. This role involves working on engineering productivity tools and infrastructure for Silicon development."
-  },
-  questions: ["Sample question"],
-  sentiment_analysis: {
-    dominant_emotion: "confidence",
-    emotion_analysis: {
-      confidence: {
-        evidence: "Sample evidence",
-        score: 75
-      }
-    },
-    feedback: "Sample feedback"
-  }
-};
-
-const fallbackCoachData = {
-  duration: 1200,
-  eye_contact: 85,
-  gestures: [
-    "Hand movements: 12 times",
-    "Head nods: 8 times",
-    "Facial expressions: 15 times"
-  ],
-  posture: 90,
-  recommendations: [
-    "Try to maintain more consistent eye contact",
-    "Use hand gestures more purposefully",
-    "Consider sitting slightly more upright"
-  ]
-};
-
-// Transform feedback API response into dashboard format
-const transformFeedbackData = (feedbackData: FeedbackResponse): any => {
-  return {
-    metadata: {
-      company: feedbackData.metadata.company,
-      job_title: feedbackData.metadata.job_title,
-      job_description: feedbackData.metadata.job_description,
-      job_url: feedbackData.metadata.job_url,
-    },
-    evaluation: {
-      overall_score: Math.round(feedbackData.analysis.performance_metrics.average_score * 100),
-      strengths: feedbackData.analysis.overall_feedback.match(/\*\*Strengths:\*\*([\s\S]*?)\*\*Areas for Improvement:\*\*/)?.[1]
-        ?.split('\n')
-        .filter((line: string) => line.trim().startsWith('1.') || line.trim().startsWith('2.'))
-        .map((line: string) => line.replace(/^\d+\.\s+\*\*|\*\*$/g, '')) || [],
-      areas_for_improvement: feedbackData.analysis.overall_feedback.match(/\*\*Areas for Improvement:\*\*([\s\S]*?)\*\*Patterns Observed:\*\*/)?.[1]
-        ?.split('\n')
-        .filter((line: string) => line.trim().startsWith('1.') || line.trim().startsWith('2.') || line.trim().startsWith('3.') || line.trim().startsWith('4.'))
-        .map((line: string) => line.replace(/^\d+\.\s+\*\*|\*\*$/g, '')) || [],
-      summary: feedbackData.analysis.overall_feedback
-    },
-    qna_feedback: feedbackData.answers.map(answer => ({
-      question: answer.question,
-      wentWell: answer.evaluation.strengths.join('. '),
-      improvements: answer.evaluation.areas_for_improvement.join('. ')
-    })),
-    tone_voice: Object.entries(feedbackData.sentiment_analysis.emotion_analysis).map(([emotion, data]) => ({
-      attribute: emotion.charAt(0).toUpperCase() + emotion.slice(1),
-      timestamp: "00:00",
-      score: data.score,
-      explanation: data.evidence
-    }))
-  };
-};
+import { useEffect, useState, useRef } from "react"
+import { InterviewData } from "@/types/interview"
+import { FALLBACK_FEEDBACK_DATA, FALLBACK_COACH_DATA } from "@/constants/feedback"
+import { transformFeedbackData } from "@/utils/transformFeedback"
+import axios from "axios"
+import { saveAs } from "file-saver"
 
 export default function InterviewPage() {
   const params = useParams()
   const sessionId = params.id as string
   const [interviewData, setInterviewData] = useState<InterviewData | null>(null)
   const [loading, setLoading] = useState(true)
+  const isInitializedRef = useRef(false)
 
   useEffect(() => {
     const fetchData = async () => {
+      // Only proceed if not already initialized
+      if (isInitializedRef.current) return;
+      isInitializedRef.current = true;
+
       try {
         // Check if interview exists in master interviews list
         const interviewsJson = localStorage.getItem('interviews');
@@ -198,40 +38,69 @@ export default function InterviewPage() {
         if (storedData) {
           const parsedData: InterviewData = JSON.parse(storedData);
 
-          try {
-            // TEMPORARY
-            throw new Error("Intentional error for testing");
+          // Reconstruct the video blob from base64 data
+          let videoBlob: Blob | null = null;
+          if ((parsedData as any).videoBlob) {
+            try {
+              // If it's already a Blob, use it directly
+              if ((parsedData as any).videoBlob instanceof Blob) {
+                videoBlob = (parsedData as any).videoBlob;
+              } else {
+                // If it's base64 data, convert it to a Blob
+                const base64Data = (parsedData as any).videoBlob;
+                const byteCharacters = atob(base64Data);
+                const byteArrays = [];
 
-            const [feedbackResponse, coachResponse] = await Promise.all([
-              fetch(`http://localhost:5000/api/interview/${sessionId}/feedback`, {
-                method: "GET",
-                headers: {
-                  'Content-Type': 'application/json',
-                }
-              }),
-              fetch('http://localhost:5000/api/coach', {
-                method: 'POST',
-                body: (() => {
-                  const formData = new FormData();
-                  const videoBlob = parsedData.videoBlob;
-                  if (videoBlob && typeof videoBlob === 'object' && videoBlob instanceof Blob) {
-                    formData.append('file', videoBlob, 'interview.webm');
+                for (let offset = 0; offset < byteCharacters.length; offset += 1024) {
+                  const slice = byteCharacters.slice(offset, offset + 1024);
+                  const byteNumbers = new Array(slice.length);
+
+                  for (let i = 0; i < slice.length; i++) {
+                    byteNumbers[i] = slice.charCodeAt(i);
                   }
-                  return formData;
-                })()
-              })
+
+                  const byteArray = new Uint8Array(byteNumbers);
+                  byteArrays.push(byteArray);
+                }
+
+                videoBlob = new Blob(byteArrays, { type: 'video/webm' });
+              }
+            } catch (error) {
+              console.error('Error reconstructing video blob:', error);
+            }
+          }
+
+          if (videoBlob) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            saveAs(videoBlob, `interview-${timestamp}.webm`);
+          }
+
+          try {
+            // Call both APIs in parallel using axios
+            const [feedbackResponse, coachResponse] = await Promise.all([
+              axios.get(`http://localhost:5000/api/interview/${sessionId}/feedback`),
+              (async () => {
+                if (videoBlob) {
+                  const formData = new FormData();
+                  formData.append('file', videoBlob, 'interview.webm');
+                  return axios.post('http://localhost:5000/api/coach', formData, {
+                    headers: {
+                      'Content-Type': 'multipart/form-data',
+                    },
+                  });
+                }
+                return { data: FALLBACK_COACH_DATA, status: 200 };
+              })()
             ]);
 
-            let feedbackData: FeedbackResponse = fallbackFeedbackData;
-            let coachData = fallbackCoachData;
+            // Use API responses if successful, otherwise use fallback data
+            const feedbackData = feedbackResponse.status === 200
+              ? feedbackResponse.data
+              : FALLBACK_FEEDBACK_DATA;
 
-            if (feedbackResponse.ok) {
-              feedbackData = await feedbackResponse.json();
-            }
-
-            if (coachResponse.ok) {
-              coachData = await coachResponse.json();
-            }
+            const coachData = coachResponse.status === 200
+              ? coachResponse.data
+              : FALLBACK_COACH_DATA;
 
             // Create final interview data
             const finalInterviewData = {
@@ -265,25 +134,21 @@ export default function InterviewPage() {
           } catch (error) {
             console.error("Error fetching analysis:", error);
             // Use fallback data
-            const fallbackData = {
+            const transformedFeedbackData = transformFeedbackData(FALLBACK_FEEDBACK_DATA);
+            const fallbackData: InterviewData = {
               ...parsedData,
               analysis: {
-                ...transformFeedbackData(fallbackFeedbackData),
+                ...transformedFeedbackData,
                 body_language: [{
                   attribute: "Eye Contact",
                   timestamp: "00:00",
-                  score: fallbackCoachData.eye_contact,
-                  explanation: `Maintained eye contact ${fallbackCoachData.eye_contact}% of the time. ${fallbackCoachData.recommendations[0]}`
+                  score: FALLBACK_COACH_DATA.eye_contact,
+                  explanation: FALLBACK_COACH_DATA.recommendations[0]
                 }, {
                   attribute: "Posture",
                   timestamp: "00:00",
-                  score: fallbackCoachData.posture,
-                  explanation: `Posture score: ${fallbackCoachData.posture}/100. ${fallbackCoachData.recommendations[2]}`
-                }, {
-                  attribute: "Gestures",
-                  timestamp: "00:00",
-                  score: Math.min(100, fallbackCoachData.gestures.length * 20),
-                  explanation: `Observed gestures: ${fallbackCoachData.gestures.join(", ")}. ${fallbackCoachData.recommendations[1]}`
+                  score: FALLBACK_COACH_DATA.posture,
+                  explanation: FALLBACK_COACH_DATA.recommendations[2]
                 }]
               }
             };
@@ -294,25 +159,50 @@ export default function InterviewPage() {
 
             setInterviewData(fallbackData);
           }
+        } else {
+          // If no stored data, use fallback data
+          const transformedFeedbackData = transformFeedbackData(FALLBACK_FEEDBACK_DATA);
+          const fallbackData: InterviewData = {
+            interviewer: FALLBACK_FEEDBACK_DATA.metadata.interviewer,
+            personality: "professional",
+            responses: FALLBACK_FEEDBACK_DATA.full_transcript.map(entry => ({
+              type: entry.role === 'interviewer' ? 'ai' : 'user',
+              text: entry.content,
+              timestamp: new Date(entry.timestamp).getTime()
+            })),
+            jobUrl: FALLBACK_FEEDBACK_DATA.metadata.job_url,
+            duration: FALLBACK_COACH_DATA.duration,
+            timestamp: FALLBACK_FEEDBACK_DATA.metadata.start_time,
+            analysis: {
+              ...transformedFeedbackData,
+              body_language: [
+                {
+                  attribute: "Eye Contact",
+                  timestamp: "00:00",
+                  score: FALLBACK_COACH_DATA.eye_contact,
+                  explanation: FALLBACK_COACH_DATA.recommendations[0]
+                },
+                {
+                  attribute: "Posture",
+                  timestamp: "00:00",
+                  score: FALLBACK_COACH_DATA.posture,
+                  explanation: FALLBACK_COACH_DATA.recommendations[2]
+                }
+              ]
+            }
+          };
+          setInterviewData(fallbackData);
         }
       } catch (error) {
-        console.error("Error processing interview data:", error);
+        console.error('Error fetching interview data:', error);
       } finally {
         setLoading(false);
       }
-    }
+    };
 
     fetchData();
   }, [sessionId]);
 
-  console.log("Interview data:", interviewData);
-
-  return interviewData ? (
-    <Dashboard
-      interviewId={sessionId}
-      interviewData={interviewData}
-      loading={loading}
-    />
-  ) : null;
+  return <Dashboard interviewId={sessionId} interviewData={interviewData} loading={loading} />;
 }
 

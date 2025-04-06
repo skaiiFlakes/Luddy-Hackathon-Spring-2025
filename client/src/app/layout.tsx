@@ -3,8 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'InterviewIQ',
-  description: 'Created with v0',
-  generator: 'v0.dev',
+  description: 'Created by Luddy Students for Luddy Students',
 }
 
 export default function RootLayout({

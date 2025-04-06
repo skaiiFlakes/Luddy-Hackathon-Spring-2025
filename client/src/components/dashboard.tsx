@@ -7,128 +7,39 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { MessageSquare, Mic, Video, Loader } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { useState, useEffect } from "react"
-import { InterviewResponse } from "@/services/ai-interview-service"
-
-interface InterviewData {
-  interviewer: string;
-  personality: string;
-  responses: InterviewResponse[];
-  jobUrl: string;
-  duration: number;
-  timestamp: string;
-  analysis?: any;
-  metadata?: {
-    company: string;
-    job_title: string;
-    job_description: string;
-    job_url: string;
-  };
-}
-
-interface Resource {
-  title: string;
-  url: string;
-}
-
-interface FeedbackItem {
-  question: string;
-  wentWell: string;
-  improvements: string;
-}
-
-interface AnalysisItem {
-  attribute: string;
-  timestamp: string;
-  score: number;
-  explanation: string;
-}
-
-interface DashboardProps {
-  interviewId?: string;
-  interviewData?: InterviewData | null;
-  loading?: boolean;
-}
+import { useState } from "react"
+import { DashboardProps, Resource, FeedbackItem, AnalysisItem } from "@/types/interview"
+import { formatTime, formatDateTime } from "@/utils/formatting"
+import { FALLBACK_DATA } from "@/constants/interview"
+import { getScoreColor } from "@/utils/score"
 
 export default function Dashboard({ interviewId, interviewData, loading = false }: DashboardProps) {
-  // Disable scrolling on the page
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "auto";
-    };
-  }, []);
-
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("qna")
-
-  // Format time as mm:ss
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
-  }
-
-  // Format date and time
-  const formatDateTime = (timestamp: string): string => {
-    const date = new Date(timestamp);
-    return `${date.toLocaleDateString()} • ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  }
 
   // Prepare the actual data to display
   const displayData = {
-    company: interviewData?.analysis?.metadata?.company || "Unknown Company",
-    jobTitle: interviewData?.analysis?.metadata?.job_title || "Unknown Job Title",
-    jobUrl: interviewData?.analysis?.metadata?.job_url || "No job URL available.",
-    jobDescription: interviewData?.analysis?.metadata?.job_description || "No job description available.",
+    company: interviewData?.analysis?.metadata?.company || FALLBACK_DATA.company,
+    jobTitle: interviewData?.analysis?.metadata?.job_title || FALLBACK_DATA.jobTitle,
+    jobUrl: interviewData?.analysis?.metadata?.job_url || FALLBACK_DATA.jobUrl,
+    jobDescription: interviewData?.analysis?.metadata?.job_description || FALLBACK_DATA.jobDescription,
     dateTime: interviewData?.timestamp ? formatDateTime(interviewData.timestamp) : "Recent Interview",
     resources: interviewData?.analysis?.resources || [],
-    summary: interviewData?.analysis?.evaluation.summary || "Analysis not available. This interview has been recorded and will be analyzed soon.",
+    summary: interviewData?.analysis?.evaluation.summary || FALLBACK_DATA.summary,
+    overallScore: interviewData?.analysis?.evaluation.overall_score || FALLBACK_DATA.overallScore,
+    overallRating: interviewData?.analysis?.evaluation.overall_rating || FALLBACK_DATA.overallRating,
     transcript: interviewData?.responses.map((response, index) => ({
       timestamp: formatTime(Math.floor((response.timestamp - interviewData?.responses[0]?.timestamp) / 1000)),
       text: `${response.type === 'ai' ? 'Interviewer' : 'You'}: ${response.text}`
-    })),
-    qnaFeedback: interviewData?.analysis?.qna_feedback || [],
-    toneVoice: interviewData?.analysis?.tone_voice || [],
-    bodyLanguage: interviewData?.analysis?.body_language || []
+    })) || FALLBACK_DATA.transcript,
+    qnaFeedback: interviewData?.analysis?.qna_feedback || FALLBACK_DATA.qnaFeedback,
+    toneVoice: interviewData?.analysis?.tone_voice || FALLBACK_DATA.toneVoice,
+    bodyLanguage: interviewData?.analysis?.body_language || FALLBACK_DATA.bodyLanguage
   };
-
-  // Function to determine color based on score
-  const getScoreColor = (score: number) => {
-    if (score >= 85) return "bg-green-500"
-    if (score >= 70) return "bg-yellow-500"
-    return "bg-red-500"
-  }
-
-  const calculateOverallScore = () => {
-    // Combine all scores from tone/voice and body language
-    const allScores = [
-      ...displayData.toneVoice.map((item: AnalysisItem) => item.score),
-      ...displayData.bodyLanguage.map((item: AnalysisItem) => item.score),
-    ]
-
-    // If no scores are available, return a default score
-    if (allScores.length === 0) {
-      return 0;
-    }
-
-    // Calculate average
-    const average = allScores.reduce((sum, score) => sum + score, 0) / allScores.length
-    return Math.round(average)
-  }
-
-  const getScoreDescription = (score: number) => {
-    if (score >= 90) return { text: "Excellent", color: "bg-green-500" }
-    if (score >= 80) return { text: "Very Good", color: "bg-green-500" }
-    if (score >= 70) return { text: "Good", color: "bg-yellow-500" }
-    if (score >= 60) return { text: "Satisfactory", color: "bg-yellow-500" }
-    return { text: "Needs Improvement", color: "bg-red-500" }
-  }
 
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col">
-        <Navbar onNewInterview={() => setIsModalOpen(true)} />
+        <Navbar />
         <div className="container flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center">
             <Loader className="h-8 w-8 animate-spin mb-4" />
@@ -141,12 +52,12 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar onNewInterview={() => setIsModalOpen(true)} />
+      <Navbar />
       {/* MAIN CONTENT */}
       <div className="container flex flex-1 flex-col lg:flex-row">
         {/* Left Column */}
         <div className="w-full lg:w-1/4 p-4 lg:pr-2 pl-0 px-0">
-          <Card className="h-full">
+          <Card className="h-[calc(100vh-5.6rem)]">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Job Description</CardTitle>
               {interviewData && interviewData.jobUrl && (
@@ -192,9 +103,10 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
             </CardContent>
           </Card>
         </div>
-        {/* Middle Column - Removed left and right padding */}
+
+        {/* Middle Column */}
         <div className="w-full lg:w-2/4 p-4 lg:px-2 px-0">
-          <Card className="h-full">
+          <Card className="h-[calc(100vh-5.6rem)]">
             <CardHeader className="pb-2">
               <div className="flex justify-between items-center">
                 <div>
@@ -202,15 +114,15 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                   <CardTitle className="text-lg">{displayData.jobTitle}</CardTitle>
                   <CardDescription>{displayData.dateTime}</CardDescription>
                 </div>
-                {calculateOverallScore() > 0 && (
+                {displayData.overallScore > 0 && (
                   <div className="flex items-center gap-2 bg-muted/60 border px-4 py-2 rounded-md ">
                     <div className="flex flex-col items-center">
-                      <div className="text-2xl font-bold">{calculateOverallScore()}%</div>
+                      <div className="text-2xl font-bold">{displayData.overallScore}%</div>
                       <div className="flex items-center gap-2 text-xs ">
                         <span
-                          className={`h-2 w-2 rounded-full ${getScoreDescription(calculateOverallScore()).color}`}
+                          className={`h-2 w-2 rounded-full ${getScoreColor(displayData.overallScore)}`}
                         ></span>
-                        {getScoreDescription(calculateOverallScore()).text}
+                        {displayData.overallRating}
                       </div>
                     </div>
                   </div>
@@ -218,28 +130,29 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
               </div>
             </CardHeader>
             <CardContent className="flex flex-col h-[calc(100%-5rem)]">
-              <p className="text-sm text-muted-foreground mb-4">{displayData.summary}</p>
-              <Separator className="my-4 w-full" />
-              <div className="flex-grow overflow-auto">
-                <ScrollArea className="h-[calc(100vh-26.5rem)]">
-                  <div className="space-y-4">
-                    {displayData.transcript.map((entry, index) => (
-                      <div key={index} className="flex">
-                        <span className="text-xs font-medium text-muted-foreground w-12 flex-shrink-0">
-                          {entry.timestamp}
-                        </span>
-                        <p className="text-sm">{entry.text}</p>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
+              <div className="flex-none">
+                <p className="text-sm text-muted-foreground mb-4">{displayData.summary}</p>
+                <Separator className="my-4 w-full" />
               </div>
+              <ScrollArea className="flex-1">
+                <div className="space-y-4 pr-4">
+                  {displayData.transcript.map((entry, index) => (
+                    <div key={index} className="flex">
+                      <span className="text-xs font-medium text-muted-foreground w-12 flex-shrink-0">
+                        {entry.timestamp}
+                      </span>
+                      <p className="text-sm">{entry.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
             </CardContent>
           </Card>
         </div>
+
         {/* Right Column */}
         <div className="w-full lg:w-1/4 p-4 lg:pl-2 px-0">
-          <Card className="h-full">
+          <Card className="h-[calc(100vh-5.6rem)]">
             <CardContent className="p-0 h-full">
               <Tabs defaultValue="qna" className="h-full flex flex-col">
                 <TooltipProvider>
@@ -283,27 +196,28 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                       </TooltipContent>
                     </Tooltip>
                     <Tooltip>
-                        <TooltipTrigger asChild>
-                          <TabsTrigger
-                            value="body"
-                            onClick={() => setActiveTab("body")}
-                            className={`${
-                              activeTab === "body"
-                                ? "bg-white text-black border border-gray-200"
-                                : ""
-                            }`}
-                          >
-                            <Video className="h-5 w-5" />
-                            <span className="sr-only">Body Language</span>
-                          </TabsTrigger>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Body Language</p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <TooltipTrigger asChild>
+                        <TabsTrigger
+                          value="body"
+                          onClick={() => setActiveTab("body")}
+                          className={`${
+                            activeTab === "body"
+                              ? "bg-white text-black border border-gray-200"
+                              : ""
+                          }`}
+                        >
+                          <Video className="h-5 w-5" />
+                          <span className="sr-only">Body Language</span>
+                        </TabsTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Body Language</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </TabsList>
                 </TooltipProvider>
-                {/* RIGHT COL — QNA */}
+
+                {/* QnA Tab */}
                 <TabsContent value="qna" className="flex-grow overflow-auto p-4">
                   <ScrollArea className="h-[calc(100vh-11rem)]">
                     <div className="space-y-4">
@@ -337,7 +251,8 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                     </div>
                   </ScrollArea>
                 </TabsContent>
-                {/* RIGHT COL — TONE */}
+
+                {/* Tone Tab */}
                 <TabsContent value="tone" className="flex-grow overflow-auto p-4">
                   <ScrollArea className="h-[calc(100vh-11rem)]">
                     <div className="space-y-4">
@@ -374,7 +289,8 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                     </div>
                   </ScrollArea>
                 </TabsContent>
-                {/* RIGHT COL — BODY */}
+
+                {/* Body Language Tab */}
                 <TabsContent value="body" className="flex-grow overflow-auto p-4">
                   <ScrollArea className="h-[calc(100vh-11rem)]">
                     <div className="space-y-4">

@@ -9,9 +9,13 @@ import { Mic, Square, Loader, Clock, Loader2 } from "lucide-react"
 import { saveAs } from "file-saver"
 import Image from "next/image"
 import aiInterviewService, { InterviewResponse } from "@/services/ai-interview-service"
+import axios from "axios"
 
 
 export default function ConductInterviewPage() {
+  const IS_TEST = true
+  const isInitializedRef = useRef(false)
+
   const [isRecording, setIsRecording] = useState(false)
   const [interviewComplete, setInterviewComplete] = useState(false)
   const [currentTranscript, setCurrentTranscript] = useState("")
@@ -24,7 +28,6 @@ export default function ConductInterviewPage() {
   const [showTranscript, setShowTranscript] = useState(false)
   const [interviewType, setInterviewType] = useState("mixed")
   const [jobUrl, setJobUrl] = useState("")
-  const [isModalOpen, setIsModalOpen] = useState(false)
 
   const router = useRouter()
   const [fadeIn, setFadeIn] = useState(false)
@@ -36,9 +39,10 @@ export default function ConductInterviewPage() {
   const videoRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunks = useRef<Blob[]>([])
   const recordedVideoChunks = useRef<Blob[]>([])
-  const recordedSessions = useRef<{video: Blob, audio: Blob}[]>([])
+  const recordedSessions = useRef<{ video: Blob, audio: Blob }[]>([])
+  const isSessionRecordingRef = useRef(false)
 
-  // Initialize video stream
+  // Initialize video stream and start recording
   useEffect(() => {
     const initializeVideo = async () => {
       try {
@@ -50,6 +54,23 @@ export default function ConductInterviewPage() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
+
+        // Start recording the entire session
+        if (stream) {
+          const videoRecorder = new MediaRecorder(stream, {
+            mimeType: 'video/webm'
+          });
+          videoRecorderRef.current = videoRecorder;
+
+          videoRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              recordedVideoChunks.current.push(event.data);
+            }
+          };
+
+          videoRecorder.start(1000); // Collect data every second
+          isSessionRecordingRef.current = true;
+        }
       } catch (error) {
         console.error("Error accessing camera:", error);
       }
@@ -57,8 +78,12 @@ export default function ConductInterviewPage() {
 
     initializeVideo();
 
-    // Cleanup function to stop all tracks when component unmounts
+    // Cleanup function to stop all tracks and recording when component unmounts
     return () => {
+      if (videoRecorderRef.current && isSessionRecordingRef.current) {
+        videoRecorderRef.current.stop();
+        isSessionRecordingRef.current = false;
+      }
       if (videoRef.current?.srcObject) {
         const stream = videoRef.current.srcObject as MediaStream;
         stream.getTracks().forEach(track => track.stop());
@@ -101,25 +126,34 @@ export default function ConductInterviewPage() {
     }
   }, [])
 
+  // Initialize interview and handle fade-in
   useEffect(() => {
     console.log("ConductInterviewPage mounted")
-    const queryParams = new URLSearchParams(window.location.search)
-    const selectedInterviewer = queryParams.get("interviewer") || "jeff"
-    const urlJobUrl = queryParams.get("jobUrl") || "https://www.google.com/about/careers/applications/jobs/results/134028773082178246-software-engineer-engineering-productivity-silicon"
-    const interviewType = queryParams.get("interviewType") || "mixed"
-    const focusAreas = queryParams.get("focusAreas") || ""
 
-    if (queryParams.has("interviewer") || queryParams.has("jobUrl") || queryParams.has("interviewType") || queryParams.has("focusAreas")) {
-      setInterviewer(selectedInterviewer);
-      console.log(selectedInterviewer, interviewType, urlJobUrl, focusAreas);
-      initializeInterview(selectedInterviewer, interviewType, urlJobUrl, focusAreas.split(','));
+    // Set fade-in immediately
+    setFadeIn(true);
+
+    // Only initialize if not already initialized
+    if (!isInitializedRef.current) {
+      const queryParams = new URLSearchParams(window.location.search)
+      const selectedInterviewer = queryParams.get("interviewer") || "jeff"
+      const urlJobUrl = queryParams.get("jobUrl") || "https://www.google.com/about/careers/applications/jobs/results/134028773082178246-software-engineer-engineering-productivity-silicon"
+      const interviewType = queryParams.get("interviewType") || "mixed"
+      const focusAreas = queryParams.get("focusAreas") || ""
+
+      if (queryParams.has("interviewer") || queryParams.has("jobUrl") || queryParams.has("interviewType") || queryParams.has("focusAreas")) {
+        setInterviewer(selectedInterviewer);
+        setJobUrl(urlJobUrl);
+        setInterviewType(interviewType);
+        console.log(selectedInterviewer, interviewType, urlJobUrl, focusAreas);
+        initializeInterview(selectedInterviewer, interviewType, urlJobUrl, focusAreas.split(','));
+        isInitializedRef.current = true;
+      }
+
+      return () => {
+        stopTimer(); // Clean up timer on unmount
+      };
     }
-
-    const timer = setTimeout(() => setFadeIn(true), 0);
-    return () => {
-      clearTimeout(timer);
-      stopTimer(); // Clean up timer on unmount
-    };
   }, []); // Empty dependency array to run only once on mount
 
   const initializeInterview = async (selectedInterviewer: string, selectedType: string, jobLink: string, selectedFocusAreas: string[]) => {
@@ -131,7 +165,8 @@ export default function ConductInterviewPage() {
         selectedInterviewer,
         selectedType,
         selectedFocusAreas,
-        jobLink
+        jobLink,
+        IS_TEST
       );
 
       setCurrentTranscript(introduction);
@@ -144,8 +179,9 @@ export default function ConductInterviewPage() {
       // Begin AI speaking
       setIsProcessing(false);
       setIsSpeaking(true);
-      // TEMPORARY
-      // await aiInterviewService.speakText(introduction);
+      if (!IS_TEST) {
+        await aiInterviewService.speakText(introduction);
+      }
       setIsSpeaking(false);
 
       // Switch to user's turn
@@ -267,8 +303,9 @@ export default function ConductInterviewPage() {
       // Begin AI speaking
       setIsProcessing(false);
       setIsSpeaking(true);
-      // TEMPORARY
-      // await aiInterviewService.speakText(text);
+      if (!IS_TEST) {
+        await aiInterviewService.speakText(text);
+      }
       setIsSpeaking(false);
 
       // If interview is not complete, switch back to user's turn
@@ -317,28 +354,40 @@ export default function ConductInterviewPage() {
         throw new Error("No active interview session");
       }
 
-      // Get the final video recording
-      const finalVideo = recordedSessions.current[recordedSessions.current.length - 1]?.video;
-      if (!finalVideo) {
-        throw new Error("No video recording found");
+      // Stop the session recording if it's still running
+      if (videoRecorderRef.current && isSessionRecordingRef.current) {
+        videoRecorderRef.current.stop();
+        isSessionRecordingRef.current = false;
       }
 
-      // Save interview data to localStorage
-      const interviewData = {
-        interviewer: interviewer,
-        interviewType: interviewType,
-        responses: aiInterviewService.getResponses(),
-        jobUrl: jobUrl,
-        duration: timer,
-        timestamp: new Date().toISOString(),
-        sessionId: sessionId,
-        videoBlob: finalVideo
+      // Get the final video recording
+      const finalVideo = new Blob(recordedVideoChunks.current, { type: "video/webm" });
+
+      // Convert video blob to base64 for localStorage storage
+      const reader = new FileReader();
+      reader.readAsDataURL(finalVideo);
+      reader.onloadend = () => {
+        const base64data = reader.result as string;
+        // Remove the data URL prefix to get just the base64 string
+        const base64String = base64data.split(',')[1];
+
+        // Save interview data to localStorage
+        const interviewData = {
+          interviewer: interviewer,
+          interviewType: interviewType,
+          responses: aiInterviewService.getResponses(),
+          jobUrl: jobUrl,
+          duration: timer,
+          timestamp: new Date().toISOString(),
+          sessionId: sessionId,
+          videoBlob: base64String
+        };
+
+        localStorage.setItem('interviewData', JSON.stringify(interviewData));
+
+        // Navigate to results page
+        router.push(`/interview/${sessionId}`);
       };
-
-      localStorage.setItem('interviewData', JSON.stringify(interviewData));
-
-      // Navigate to results page
-      router.push(`/interview/${sessionId}`);
 
     } catch (error) {
       console.error("Error preparing interview analysis:", error);
@@ -347,29 +396,28 @@ export default function ConductInterviewPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar onOpenModal={() => setIsModalOpen(true)} />
-      <div className={`container flex flex-1 items-center justify-center py-8 relative w-100vw ${
-              fadeIn ? "opacity-100" : "opacity-0"
-            } transition-opacity duration-1000`} >
+      <Navbar />
+      <div className={`container flex flex-1 items-center justify-center py-8 relative w-100vw ${fadeIn ? "opacity-100" : "opacity-0"
+        } transition-opacity duration-1000`} >
         {/* Stack AI Interviewer and Transcript & Controls */}
         <div className="flex flex-col items-center justify-center w-full lg:flex-row lg:w-100 lg:items-center">
           {/* AI Interviewer with Audio Waves */}
           <div className="relative mb-14 lg:mb-0 lg:mr-20 lg:flex-shrink-0">
             <div className="h-128 w-128 rounded-full overflow-hidden relative z-10">
               <Image
-              src={`/${interviewer}.jpg`}
-              alt={`${interviewer}'s profile picture`}
-              width={256}
-              height={256}
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.src = "/todd.jpg"; // Fallback image
-              }}
-              style={{
-                scale: 1.1,
-                transform: "translateY(10px)",
-              }}
-              className="object-cover"
+                src={`/${interviewer}.jpg`}
+                alt={`${interviewer}'s profile picture`}
+                width={256}
+                height={256}
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = "/todd.jpg"; // Fallback image
+                }}
+                style={{
+                  scale: 1.1,
+                  transform: "translateY(10px)",
+                }}
+                className="object-cover"
               />
             </div>
 
@@ -399,7 +447,7 @@ export default function ConductInterviewPage() {
 
             {/* Transcript Card */}
             <Card className="p-6">
-              <div className="min-h-[120px] mb-4">
+              <div>
                 {isProcessing ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader className="h-6 w-6 animate-spin" />
@@ -413,30 +461,36 @@ export default function ConductInterviewPage() {
                   </div>
                 )}
               </div>
-              <div className="flex flex-col gap-3">
-                {isUserTurn && !interviewComplete ? (
-                  isRecording ? (
-                    <Button onClick={endUserTurn} variant="destructive" className="w-full">
-                      <Square className="mr-2 h-4 w-4" />
-                      Stop Recording
-                    </Button>
+              {!(isProcessing || isSpeaking) ? (
+
+                <div className="flex flex-col gap-3 mt-4">
+                  {isUserTurn && !interviewComplete ? (
+                    isRecording ? (
+                      <Button onClick={endUserTurn} variant="destructive" className="w-full">
+                        <Square className="mr-2 h-4 w-4" />
+                        Stop Recording
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={startUserTurn}
+                        className="w-full"
+                        disabled={isProcessing || isSpeaking}
+                      >
+                        <Mic className="mr-2 h-4 w-4" />
+                        Start Speaking
+                      </Button>
+                    )
                   ) : (
-                    <Button
-                      onClick={startUserTurn}
-                      className="w-full"
-                      disabled={isProcessing}
-                    >
-                      <Mic className="mr-2 h-4 w-4" />
-                      Start Speaking
+                    <Button onClick={handleAnalyzeInterview} disabled={!interviewComplete} className="w-full">
+                      Analyze Interview
                     </Button>
-                  )
-                ) : (
-                  <Button onClick={handleAnalyzeInterview} disabled={!interviewComplete} className="w-full">
-                    Analyze Interview
-                  </Button>
-                )}
-              </div>
+                  )}
+                </div>
+              ) : <></>}
             </Card>
+            <Button onClick={handleAnalyzeInterview} className="w-full">
+              Analyze Interview
+            </Button>
           </div>
         </div>
 

@@ -25,6 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 interface NewInterviewModalProps {
   isOpen: boolean
   onClose: () => void
+  hasGeneralResume: boolean
 }
 
 // Map interviewer names to their default personalities
@@ -34,35 +35,28 @@ const interviewerPersonalityMap: Record<string, string> = {
   'karen': 'challenging'
 };
 
-export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModalProps) {
+export default function NewInterviewModal({ isOpen, onClose, hasGeneralResume }: NewInterviewModalProps) {
   const [jobUrl, setJobUrl] = useState("")
   const [urlError, setUrlError] = useState<string | null>(null)
   const [interviewer, setInterviewer] = useState("todd")
   const [personality, setPersonality] = useState("friendly") // Default matches initial interviewer (todd)
   const [interviewType, setInterviewType] = useState("behavioral")
-  const [useGeneralResume, setUseGeneralResume] = useState(true)
-  const [hasGeneralResume, setHasGeneralResume] = useState(false)
+  const [useGeneralResume, setUseGeneralResume] = useState(hasGeneralResume)
   const [specialResume, setSpecialResume] = useState<any>(null)
   const [behavioralFocusAreas, setBehavioralFocusAreas] = useState<string[]>([])
   const [technicalFocusAreas, setTechnicalFocusAreas] = useState<string[]>([])
   const router = useRouter()
-
-  // Check for general resume in localStorage on component mount
-  useEffect(() => {
-    const generalResume = localStorage.getItem('generalResume')
-    if (generalResume) {
-      setHasGeneralResume(true)
-    } else {
-      setUseGeneralResume(false)
-      setHasGeneralResume(false)
-    }
-  }, []);
 
   // Update personality whenever interviewer changes
   useEffect(() => {
     const defaultPersonality = interviewerPersonalityMap[interviewer] || 'friendly';
     setPersonality(defaultPersonality);
   }, [interviewer]);
+
+  // Update useGeneralResume when hasGeneralResume prop changes
+  useEffect(() => {
+    setUseGeneralResume(hasGeneralResume)
+  }, [hasGeneralResume])
 
   // Validate URL format
   const isValidUrl = (url: string): boolean => {
