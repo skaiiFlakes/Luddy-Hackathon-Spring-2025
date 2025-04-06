@@ -76,14 +76,15 @@ def start_interview():
     interview_type = request.form['interview_type']
     focus_areas    = request.form['focus_areas']
     job_link       = request.form['job_link']
-
-    # job_data = scrape_job(job_link)
-    # save_to_json(job_data, "job_data.json") 
+    
+    # https://careers.servicenow.com/jobs/744000052094688/sr-manager-product-design-crm-industry-workflows/
+    job_data = scrape_job(job_link)
+    save_to_json(job_data, "../static/job_data.json") 
 
     ctx[uuid] = Interviewer(
         interviewer,
         interview_type,
-        open("job_data.json").read(),
+        open("../static/job_data.json").read(),
         text,
         json.loads(focus_areas)
     )
@@ -146,7 +147,7 @@ def next_response(session_id):
         
         # Transcribe the recording
         try:
-            text = transcribe_webm(path)['text']
+            text = transcribe_webm(path, auto_translate_non_english = True)['text']
         except Exception as e:
             return jsonify({"error": f"Error transcribing recording: {str(e)}"}), 500
         
@@ -272,7 +273,7 @@ def voice_sentiment(session_id):
     for recording in recordings:
         file_path = os.path.join(RECORD_FOLDER, recording)
         try:
-            transcript = transcribe_webm(file_path)['text']
+            transcript = transcribe_webm(file_path, auto_translate_non_english = True)['text']
             all_text += transcript + " "
         except Exception as e:
             print(f"Error transcribing {recording}: {str(e)}")

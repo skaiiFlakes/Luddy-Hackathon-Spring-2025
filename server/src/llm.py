@@ -1,5 +1,6 @@
 import ollama
 import pydantic
+import json
 
 from datetime import datetime
 
@@ -10,19 +11,19 @@ CFG = {
 }
 
 PERSONAS = {
-    "todd"  : open("personas/todd.txt").read(),
-    "jeff"  : open("personas/jeff.txt").read(),
-    "karen" : open("personas/karen.txt").read()
+    "todd"  : open("../static/personas/todd.txt").read(),
+    "jeff"  : open("../static/personas/jeff.txt").read(),
+    "karen" : open("../static/personas/karen.txt").read()
 }
 
 TEMPLATES = {
-    "introduction" : open("prompts/introduction.tmpl").read(),
-    "technical"    : open("prompts/technical_questions.tmpl").read(),
-    "behavioral"   : open("prompts/behavioral_questions.tmpl").read(),
-    "follow_up"    : open("prompts/follow_up.tmpl").read(),
-    "wrap_up"      : open("prompts/wrap_up.tmpl").read(),
-    "feedback"     : open("prompts/feedback.tmpl").read(),
-    "closer"       : open("prompts/closer.tmpl").read() 
+    "introduction" : open("../static/prompts/introduction.tmpl").read(),
+    "technical"    : open("../static/prompts/technical_questions.tmpl").read(),
+    "behavioral"   : open("../static/prompts/behavioral_questions.tmpl").read(),
+    "follow_up"    : open("../static/prompts/follow_up.tmpl").read(),
+    "wrap_up"      : open("../static/prompts/wrap_up.tmpl").read(),
+    "feedback"     : open("../static/prompts/feedback.tmpl").read(),
+    "closer"       : open("../static/prompts/closer.tmpl").read() 
 }
 
 class Questions(pydantic.BaseModel):
@@ -301,10 +302,11 @@ class Interviewer:
             "answers"   : answers,
             "questions" : questions,
             "metadata"  : {
-                "interviewer"    : self.name,
-                "interview_type" : self.mode,
-                "start_time"     : self.start,
-                "end_time"       : self.end,
+                "interviewer"     : self.name,
+                "interview_type"  : self.mode,
+                "start_time"      : self.start,
+                "end_time"        : self.end,
+                "job_description" : json.loads(self.job_desc)
             },
             "analysis"           : {},
             "full_transcript"    : history,

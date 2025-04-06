@@ -15,4 +15,4 @@ WORKDIR /app
 
 EXPOSE 5000
 
-CMD ["uv", "run", "main.py"]
+CMD ["uv", "run", "src/main.py"]

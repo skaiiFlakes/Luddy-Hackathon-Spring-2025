@@ -2,18 +2,18 @@ import whisper
 import os
 import subprocess
 import tempfile
+
 from pyannote.audio import Pipeline
-from typing import Optional, Dict, List, Any
+from typing         import Optional, Dict, List, Any
 
 # Global variables
 whisper_model = None
 current_whisper_model = None
-diarization_model = None
 
 
 def load_models(whisper_model_name="base"):
-    """Load the Whisper and diarization models"""
-    global whisper_model, current_whisper_model, diarization_model
+    """Load the Whisper models"""
+    global whisper_model, current_whisper_model
 
     # Load Whisper model if needed
     if whisper_model is None or current_whisper_model != whisper_model_name:
@@ -61,17 +61,37 @@ def convert_webm_to_mp3(webm_file_path):
         print(f"Error converting WebM to MP3: {e}")
         raise
 
-def transcribe_webm(file_path, whisper_model_name="base"):
+def transcribe_webm(file_path, whisper_model_name="base", translate_to_english=False, auto_translate_non_english=True):
     """
     Transcribe a WebM file by first converting it to MP3, without speaker diarization.
-    Returns a simple JSON with just the text.
+    Automatically detects the language and can translate to English.
+
+    Args:
+        file_path: Path to the WebM file
+        whisper_model_name: Name of the Whisper model to use
+        translate_to_english: Whether to force translation to English
+        auto_translate_non_english: Whether to automatically translate non-English to English
+
+    Returns:
+        A JSON with the transcribed text and detected language
     """
+
     # Convert WebM to MP3
     mp3_file_path = convert_webm_to_mp3(file_path)
 
     try:
-        # Load models (just Whisper, no diarization)
+        # Load models
         load_models(whisper_model_name)
+
+        # First, detect the language with a transcription
+        detect_result = whisper_model.transcribe(
+            mp3_file_path,
+            verbose=False,
+            task="transcribe"
+        )
+
+        detected_language = detect_result.get("language", "unknown")
+        should_translate  = translate_to_english or (auto_translate_non_english and detected_language != "en")
 
         # Transcribe using just Whisper
         whisper_result = whisper_model.transcribe(
@@ -79,10 +99,29 @@ def transcribe_webm(file_path, whisper_model_name="base"):
             verbose=False
         )
 
-        # Return simple JSON with just the text
-        result = {
-            "text": whisper_result["text"]
-        }
+        # If the language is not English and auto-translate is enabled, or if translation is explicitly requested,
+        # perform translation
+        if should_translate:
+            # Perform translation to English
+            translate_result = whisper_model.transcribe(
+                mp3_file_path,
+                verbose=False,
+                task="translate"
+            )
+
+            # Return result with translation
+            result = {
+                "text": translate_result["text"],
+                "language": detected_language,
+                "translated": True
+            }
+        else:
+            # Return the original transcription without translation
+            result = {
+                "text": detect_result["text"],
+                "language": detected_language,
+                "translated": False
+            }
 
         return result
     finally:
