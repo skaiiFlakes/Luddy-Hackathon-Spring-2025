@@ -21,7 +21,8 @@ TEMPLATES = {
     "behavioral"   : open("prompts/behavioral_questions.tmpl").read(),
     "follow_up"    : open("prompts/follow_up.tmpl").read(),
     "wrap_up"      : open("prompts/wrap_up.tmpl").read(),
-    "feedback"      : open("prompts/feedback.tmpl").read()
+    "feedback"     : open("prompts/feedback.tmpl").read(),
+    "closer"       : open("prompts/closer.tmpl").read() 
 }
 
 class Questions(pydantic.BaseModel):
