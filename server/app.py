@@ -37,7 +37,7 @@ with app.app_context():
 def convert_audio():
     """
     Endpoint to handle WebM audio files, convert them to MP3, and then transcribe.
-    Returns simple JSON with just the text.
+    Supports automatic language detection and automatic translation of non-English to English.
     """
     # Check if the file is in the request
     if 'file' not in request.files:
@@ -50,6 +50,10 @@ def convert_audio():
     # Get model name from the request
     model_name = request.form.get('model_name', 'base')
 
+    # Get translation preferences from the request
+    translate_to_english = request.form.get('translate_to_english', 'false').lower() == 'true'
+    auto_translate = request.form.get('auto_translate', 'true').lower() == 'true'
+
     # Verify file extension is WebM
     if not file.filename.lower().endswith('.webm'):
         return jsonify({"error": "File must be a WebM file"}), 400
@@ -59,10 +63,14 @@ def convert_audio():
     file.save(temp_file)
 
     try:
-        # Use the imported service to convert WebM to MP3 and transcribe simply
-        result = whisper_service.transcribe_webm(temp_file, model_name)
+        # Use the imported service to transcribe with language support
+        result = whisper_service.transcribe_webm(
+            temp_file,
+            model_name,
+            translate_to_english=translate_to_english,
+            auto_translate_non_english=auto_translate
+        )
 
-        # Return the simple result with just the text
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
