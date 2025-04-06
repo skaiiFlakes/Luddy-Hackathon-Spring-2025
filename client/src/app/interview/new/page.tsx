@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 
 export default function ConductInterviewPage() {
-  const IS_TEST = false
+  const IS_TEST = true
   const isInitializedRef = useRef(false)
 
   const [isRecording, setIsRecording] = useState(false)
@@ -50,6 +50,8 @@ export default function ConductInterviewPage() {
   const recordedVideoChunks = useRef<Blob[]>([])
   const recordedSessions = useRef<{ video: Blob, audio: Blob }[]>([])
   const isSessionRecordingRef = useRef(false)
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   // Initialize video stream and start recording
   useEffect(() => {
@@ -356,6 +358,7 @@ export default function ConductInterviewPage() {
   }, [isProcessing, currentTranscript]);
 
   const handleAnalyzeInterview = async () => {
+    setIsAnalyzing(true);
     try {
       const sessionId = aiInterviewService.getSessionId();
       if (!sessionId) {
@@ -369,10 +372,7 @@ export default function ConductInterviewPage() {
 
       // Create final video blob from recorded chunks
       const videoBlob = new Blob(recordedVideoChunks.current, { type: 'video/webm' });
-
-      // Download the webm file
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      saveAs(videoBlob, `interview-${timestamp}.webm`);
+      console.log('Final video blob:', videoBlob);
 
       // Get the master interviews list
       const interviewsJson = localStorage.getItem('interviews');
@@ -421,17 +421,17 @@ export default function ConductInterviewPage() {
             attribute: "Eye Contact",
             timestamp: "00:00",
             score: coachData.eye_contact,
-            explanation: `Maintained eye contact ${coachData.eye_contact}% of the time. ${coachData.recommendations[0]}`
+            explanation: `Maintained eye contact ${coachData.eye_contact}% of the time.`
           }, {
             attribute: "Posture",
             timestamp: "00:00",
             score: coachData.posture,
-            explanation: `Posture score: ${coachData.posture}/100. ${coachData.recommendations[2]}`
+            explanation: `Posture score: ${coachData.posture}/100.`
           }, {
             attribute: "Gestures",
             timestamp: "00:00",
             score: Math.min(100, coachData.gestures.length * 20),
-            explanation: `Observed gestures: ${coachData.gestures.join(", ")}. ${coachData.recommendations[1]}`
+            explanation: `Observed gestures: ${coachData.gestures.join(", ")}`
           }]
         }
       };
@@ -472,6 +472,8 @@ export default function ConductInterviewPage() {
 
       // Navigate to results page
       router.push(`/interview/${sessionId}`);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -480,116 +482,128 @@ export default function ConductInterviewPage() {
       <Navbar />
       <div className={`container flex flex-1 items-center justify-center py-8 relative w-100vw ${fadeIn ? "opacity-100" : "opacity-0"
         } transition-opacity duration-1000`} >
-        {/* Stack AI Interviewer and Transcript & Controls */}
-        <div className="flex flex-col items-center justify-center w-full lg:flex-row lg:w-100 lg:items-center">
-          {/* AI Interviewer with Audio Waves */}
-          <div className="relative mb-14 lg:mb-0 lg:mr-20 lg:flex-shrink-0">
-            <div className="h-128 w-128 rounded-full overflow-hidden relative z-10">
-              <Image
-                src={`/${interviewer}.jpg`}
-                alt={`${interviewer}'s profile picture`}
-                width={256}
-                height={256}
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.src = "/todd.jpg"; // Fallback image
-                }}
-                style={{
-                  scale: 1.1,
-                  transform: "translateY(10px)",
-                }}
-                className="object-cover"
-              />
-            </div>
-
-            {/* Audio Waves */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`absolute h-${isSpeaking ? waveAmplitude : 5} w-1 bg-gray-200 rounded-full opacity-${isSpeaking ? "140" : "40"}`}
-                  style={{
-                    transform: `rotate(${i * 45}deg) translateX(${isSpeaking ? 140 + (Math.random() * 10) : 140}px)`,
-                    height: isSpeaking ? `${waveAmplitude + (i % 3) * 5}px` : "30px",
-                    transition: "height 0.2s ease-in-out",
-                  }}
-                />
-              ))}
+        {isAnalyzing ? (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-4">
+              <Loader className="h-8 w-8 animate-spin" />
+              <p className="text-lg font-medium">Analyzing interview...</p>
+              <p className="text-sm text-muted-foreground">This may take a few moments</p>
             </div>
           </div>
-
-          {/* Transcript and Controls with Timer */}
-          <div className="w-full max-w-md">
-            {/* Timer Card */}
-            <Card className="p-4 mb-4 flex items-center justify-center">
-              <Clock className="mr-2 h-5 w-5" />
-              <span className="text-lg font-mono">{formatTime(timer)}</span>
-            </Card>
-
-            {/* Transcript Card */}
-            <Card className="p-6">
-              <div>
-                {isProcessing ? (
-                  <div className="flex items-center justify-center h-full">
-                    <Loader className="h-6 w-6 animate-spin" />
-                    <span className="ml-2">Processing...</span>
-                  </div>
-                ) : (
-                  <div className="relative overflow-hidden">
-                    <div className={`text-md ${showTranscript ? 'animate-curtain-drop' : 'opacity-0'}`}>
-                      {currentTranscript}
-                    </div>
-                  </div>
-                )}
-              </div>
-              {!(isProcessing || isSpeaking) ? (
-
-                <div className="flex flex-col gap-3 mt-4">
-                  {isUserTurn && !interviewComplete ? (
-                    isRecording ? (
-                      <Button onClick={endUserTurn} variant="destructive" className="w-full">
-                        <Square className="mr-2 h-4 w-4" />
-                        Stop Recording
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={startUserTurn}
-                        className="w-full"
-                        disabled={isProcessing || isSpeaking}
-                      >
-                        <Mic className="mr-2 h-4 w-4" />
-                        Start Speaking
-                      </Button>
-                    )
-                  ) : (
-                    <Button onClick={handleAnalyzeInterview} disabled={!interviewComplete} className="w-full">
-                      Analyze Interview
-                    </Button>
-                  )}
+        ) : (
+          <>
+            {/* Stack AI Interviewer and Transcript & Controls */}
+            <div className="flex flex-col items-center justify-center w-full lg:flex-row lg:w-100 lg:items-center">
+              {/* AI Interviewer with Audio Waves */}
+              <div className="relative mb-14 lg:mb-0 lg:mr-20 lg:flex-shrink-0">
+                <div className="h-128 w-128 rounded-full overflow-hidden relative z-10">
+                  <Image
+                    src={`/${interviewer}.jpg`}
+                    alt={`${interviewer}'s profile picture`}
+                    width={256}
+                    height={256}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = "/todd.jpg"; // Fallback image
+                    }}
+                    style={{
+                      scale: 1.1,
+                      transform: "translateY(10px)",
+                    }}
+                    className="object-cover"
+                  />
                 </div>
-              ) : <></>}
-            </Card>
 
-            {(IS_TEST) ? (
-              <Button onClick={handleAnalyzeInterview} className="w-full">
-                Analyze Interview
-              </Button>
-            ) : <></>}
-          </div>
-        </div>
+                {/* Audio Waves */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`absolute h-${isSpeaking ? waveAmplitude : 5} w-1 bg-gray-200 rounded-full opacity-${isSpeaking ? "140" : "40"}`}
+                      style={{
+                        transform: `rotate(${i * 45}deg) translateX(${isSpeaking ? 140 + (Math.random() * 10) : 140}px)`,
+                        height: isSpeaking ? `${waveAmplitude + (i % 3) * 5}px` : "30px",
+                        transition: "height 0.2s ease-in-out",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
 
-        {/* Live Video Feed */}
-        <div className="absolute bottom-8 left-8">
-          <Card className="overflow-hidden">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-64 h-48 bg-muted"
-            />
-          </Card>
-        </div>
+              {/* Transcript and Controls with Timer */}
+              <div className="w-full max-w-md">
+                {/* Timer Card */}
+                <Card className="p-4 mb-4 flex items-center justify-center">
+                  <Clock className="mr-2 h-5 w-5" />
+                  <span className="text-lg font-mono">{formatTime(timer)}</span>
+                </Card>
+
+                {/* Transcript Card */}
+                <Card className="p-6">
+                  <div>
+                    {isProcessing ? (
+                      <div className="flex items-center justify-center h-full">
+                        <Loader className="h-6 w-6 animate-spin" />
+                        <span className="ml-2">Processing...</span>
+                      </div>
+                    ) : (
+                      <div className="relative overflow-hidden">
+                        <div className={`text-md ${showTranscript ? 'animate-curtain-drop' : 'opacity-0'}`}>
+                          {currentTranscript}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {!(isProcessing || isSpeaking) ? (
+
+                    <div className="flex flex-col gap-3 mt-4">
+                      {isUserTurn && !interviewComplete ? (
+                        isRecording ? (
+                          <Button onClick={endUserTurn} variant="destructive" className="w-full">
+                            <Square className="mr-2 h-4 w-4" />
+                            Stop Recording
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={startUserTurn}
+                            className="w-full"
+                            disabled={isProcessing || isSpeaking}
+                          >
+                            <Mic className="mr-2 h-4 w-4" />
+                            Start Speaking
+                          </Button>
+                        )
+                      ) : (
+                        <Button onClick={handleAnalyzeInterview} disabled={!interviewComplete} className="w-full">
+                          Analyze Interview
+                        </Button>
+                      )}
+                    </div>
+                  ) : <></>}
+                </Card>
+
+                {(IS_TEST) ? (
+                  <Button onClick={handleAnalyzeInterview} className="w-full">
+                    Analyze Interview
+                  </Button>
+                ) : <></>}
+              </div>
+            </div>
+
+            {/* Live Video Feed */}
+            <div className="absolute bottom-8 left-8">
+              <Card className="overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-64 h-48 bg-muted"
+                />
+              </Card>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
