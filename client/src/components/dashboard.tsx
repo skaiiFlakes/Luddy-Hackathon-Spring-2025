@@ -77,30 +77,46 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                   </p>
                 ))}
               </ScrollArea>
-              {displayData.resources.length > 0 && (
-                <>
-                  <Separator className="my-4" />
-                  <div>
-                    <h3 className="text-lg font-semibold mb-2">Resources</h3>
-                    <ScrollArea className="h-40">
-                      <ul className="space-y-1.5">
-                        {displayData.resources.map((resource: Resource, index: number) => (
-                          <li key={index}>
-                            <a
-                              href={resource.url}
-                              className="text-sm text-primary hover:underline"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {resource.title}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </ScrollArea>
+              <Separator className="my-4" />
+              <div className="flex-none">
+                <h3 className="text-lg font-semibold mb-2">Recommended Resources</h3>
+                <ScrollArea className="h-[calc(100vh-46.5rem)]">
+
+                  <div className="space-y-4">
+                    <div className="aspect-video w-full rounded-lg overflow-hidden">
+                      <iframe
+                        src="https://www.youtube.com/embed/wCU9X8QK-rg"
+                        title="Interview Tips Video Guide"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="w-full h-full"
+                      />
+                    </div>
+                    <ul className="space-y-2">
+                      <li>
+                        <a
+                          href="https://www.betterup.com/blog/star-interview-method"
+                          className="text-sm text-primary hover:underline"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          STAR Interview Method Guide
+                        </a>
+                      </li>
+                      <li>
+                        <a
+                          href="https://www.w3schools.com/python/python_interview_questions.asp"
+                          className="text-sm text-primary hover:underline"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Python Interview Questions
+                        </a>
+                      </li>
+                    </ul>
                   </div>
-                </>
-              )}
+                </ScrollArea>
+              </div>
             </CardContent>
           </Card>
         </div>

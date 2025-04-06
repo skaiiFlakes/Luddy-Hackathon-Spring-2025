@@ -421,17 +421,17 @@ export default function ConductInterviewPage() {
             attribute: "Eye Contact",
             timestamp: "00:00",
             score: coachData.eye_contact,
-            explanation: `Maintained eye contact ${coachData.eye_contact}% of the time. ${coachData.recommendations[0]}`
+            explanation: `Maintained eye contact ${coachData.eye_contact}% of the time.`
           }, {
             attribute: "Posture",
             timestamp: "00:00",
             score: coachData.posture,
-            explanation: `Posture score: ${coachData.posture}/100. ${coachData.recommendations[2]}`
+            explanation: `Posture score: ${coachData.posture}/100.`
           }, {
             attribute: "Gestures",
             timestamp: "00:00",
             score: Math.min(100, coachData.gestures.length * 20),
-            explanation: `Observed gestures: ${coachData.gestures.join(", ")}. ${coachData.recommendations[1]}`
+            explanation: `Observed gestures: ${coachData.gestures.join(", ")}`
           }]
         }
       };
