@@ -22,7 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 
 export default function ConductInterviewPage() {
-  const IS_TEST = true
+  const IS_TEST = false
   const isInitializedRef = useRef(false)
 
   const [isRecording, setIsRecording] = useState(false)

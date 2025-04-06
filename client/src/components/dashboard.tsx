@@ -12,7 +12,7 @@ import { DashboardProps, Resource, FeedbackItem, AnalysisItem } from "@/types/in
 import { formatTime, formatDateTime } from "@/utils/formatting"
 import { FALLBACK_DATA } from "@/constants/interview"
 import { getScoreColor } from "@/utils/score"
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown from "react-markdown"
 
 export default function Dashboard({ interviewId, interviewData, loading = false }: DashboardProps) {
   const [activeTab, setActiveTab] = useState("qna")
@@ -144,7 +144,7 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                       <span className="text-xs font-medium text-muted-foreground w-12 flex-shrink-0">
                         {entry.timestamp}
                       </span>
-                      <p className="text-sm">{entry.text}</p>
+                      <p className="text-sm whitespace-pre-wrap">{entry.text}</p>
                     </div>
                   ))}
                 </div>
@@ -231,11 +231,11 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                               <div className="space-y-2">
                                 <div>
                                   <h4 className="font-medium text-sm flex items-center gap-2"><span className={`h-2 w-2 rounded-full bg-green-500`}></span>Successes</h4>
-                                  <p className="text-sm text-muted-foreground">{feedback.wentWell}</p>
+                                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{feedback.wentWell}</p>
                                 </div>
                                 <div>
                                   <h4 className="font-medium text-sm flex items-center gap-2"><span className={`h-2 w-2 rounded-full bg-red-500`}></span>Improvements</h4>
-                                  <p className="text-sm text-muted-foreground">{feedback.improvements}</p>
+                                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{feedback.improvements}</p>
                                 </div>
                               </div>
                             </CardContent>
@@ -274,7 +274,7 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                                   />
                                   <span className="text-sm font-medium">{item.score}%</span>
                                 </div>
-                                <p className="text-sm text-muted-foreground">{item.explanation}</p>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.explanation}</p>
                               </div>
                             </CardContent>
                           </Card>
@@ -312,7 +312,7 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
                                   />
                                   <span className="text-sm font-medium">{item.score}%</span>
                                 </div>
-                                <p className="text-sm text-muted-foreground">{item.explanation}</p>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.explanation}</p>
                               </div>
                             </CardContent>
                           </Card>
