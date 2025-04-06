@@ -134,30 +134,30 @@ class Interviewer:
             }
         )
 
-        messages = [
-            {'role': 'system', 'content': self.persona},
-            {'role': 'system', 'content': prompt}
-        ]
+        # messages = [
+        #    {'role': 'system', 'content': self.persona},
+        #    {'role': 'system', 'content': prompt}
+        #]
 
-        messages += self.history
+        # messages += self.history
 
-        response = ollama.chat(
-            messages = messages,
-            options = CFG,
-            model   = LLM
-        )
+        # response = ollama.chat(
+        #    messages = messages,
+        #    options = CFG,
+        #    model   = LLM
+        #)
 
-        self.history.append(
-            {
-                "role": "assistant",
-                "content": response.message['content'],
-                "time": now()
-            }
-        )
+        # self.history.append(
+        #    {
+        #        "role": "assistant",
+        #        "content": response.message['content'],
+        #        "time": now()
+        #    }
+        # )
 
         self.follow_up = not self.follow_up
 
-        return response.message.content, not self.follow_up
+        return "", False
     
     def generate_introduction(self):
         prompt = TEMPLATES['introduction'] % (self.mode)
@@ -169,6 +169,14 @@ class Interviewer:
             ],
             options = CFG,
             model   = LLM,
+        )
+
+        self.history.append(
+            {
+                "role": "assistant",
+                "content": response.message['content'],
+                "time": now()
+            }
         )
 
         return response.message.content
@@ -197,6 +205,8 @@ class Interviewer:
         transcript = ""
         history    = []
 
+        print(self.history)
+
         for i in range(len(self.history) - 1):
             if i % 2 != 0:
                 continue
@@ -220,10 +230,10 @@ class Interviewer:
                     "timestamp"   : r['time']
                 }
             )
-
+            print(TEMPLATES['feedback'] % (q['content'], r['content']))
             response = ollama.chat(
                 messages = [
-                    {'role': 'system', 'content': TEMPLATES['feedback'] % (q, r)}
+                    {'role': 'system', 'content': TEMPLATES['feedback'] % (q['content'], r['content'])}
                 ],
                 options = CFG,
                 model   = LLM,
@@ -272,7 +282,7 @@ class Interviewer:
 
         Based on all these responses, provide a detailed, holistic assessment of the candidate's interview performance across all questions, including patterns observed, general strengths and weaknesses.
 
-        Return your feedback in a first-person format, as if you were talking directly to the candidate.
+        Return your feedback in a first-person format, as if you were talking directly to the candidate. You do not need to include any framing or templates (e.g. 'best, [your name]'.)
         Make your feedback concise but comprehensive, highlighting the most important patterns across all responses.
         """
 

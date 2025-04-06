@@ -11,6 +11,9 @@ mp_hands = mp.solutions.hands
 mp_face_mesh = mp.solutions.face_mesh
 mp_pose = mp.solutions.pose
 
+mp_hands.model_complexity = 0
+mp_pose.model_complexity = 0
+
 # Drawing specifications
 drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
 
@@ -283,8 +286,6 @@ def apply_smoothing(current, history, history_list, confidence_threshold=0.6):
 
 def process_frame(image, prev_hand_pos=None):
     """Process a single frame for interview-specific feedback"""
-    # Make a copy for drawing
-    annotated_image = image.copy()
     
     # Convert the BGR image to RGB
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -310,13 +311,6 @@ def process_frame(image, prev_hand_pos=None):
         # Interview-focused hand gesture analysis
         if hand_results.multi_hand_landmarks:
             for hand_landmarks in hand_results.multi_hand_landmarks:
-                # Draw hand landmarks
-                mp_drawing.draw_landmarks(
-                    annotated_image,
-                    hand_landmarks,
-                    mp_hands.HAND_CONNECTIONS,
-                    mp_drawing_styles.get_default_hand_landmarks_style(),
-                    mp_drawing_styles.get_default_hand_connections_style())
                 
                 # Track wrist position for movement analysis
                 wrist = hand_landmarks.landmark[mp_hands.HandLandmark.WRIST]
@@ -340,37 +334,10 @@ def process_frame(image, prev_hand_pos=None):
                 # Update analytics
                 analytics.update_gesture(gesture)
                 
-                # Display feedback
-                cv2.putText(
-                    annotated_image, 
-                    f"Hand: {gesture}", 
-                    (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 
-                    0.6, 
-                    (0, 255, 0), 
-                    2
-                )
-                cv2.putText(
-                    annotated_image, 
-                    feedback, 
-                    (10, 60), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 
-                    0.6, 
-                    (0, 255, 0), 
-                    2
-                )
         
         # Interview-focused eye contact analysis
         if face_results.multi_face_landmarks:
             for face_landmarks in face_results.multi_face_landmarks:
-                # Draw face landmarks (lighter style for less distraction)
-                mp_drawing.draw_landmarks(
-                    image=annotated_image,
-                    landmark_list=face_landmarks,
-                    connections=mp_face_mesh.FACEMESH_CONTOURS,
-                    landmark_drawing_spec=mp_drawing.DrawingSpec(color=(80, 110, 10), thickness=1, circle_radius=1),
-                    connection_drawing_spec=mp_drawing.DrawingSpec(color=(80, 80, 80), thickness=1)
-                )
                 
                 # Interview-specific eye contact analysis
                 has_eye_contact, eye_feedback = analyze_eye_contact(
@@ -391,26 +358,11 @@ def process_frame(image, prev_hand_pos=None):
                 
                 # Display feedback
                 status_color = (0, 255, 0) if has_eye_contact else (0, 0, 255)
-                cv2.putText(
-                    annotated_image, 
-                    eye_feedback, 
-                    (10, 90), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 
-                    0.6, 
-                    status_color, 
-                    2
-                )
+
         
         # Interview-focused posture analysis
         if pose_results.pose_landmarks:
-            # Draw pose landmarks (lighter style for less distraction)
-            mp_drawing.draw_landmarks(
-                annotated_image,
-                pose_results.pose_landmarks,
-                mp_pose.POSE_CONNECTIONS,
-                mp_drawing.DrawingSpec(color=(80, 110, 10), thickness=1, circle_radius=1),
-                mp_drawing.DrawingSpec(color=(80, 80, 80), thickness=1)
-            )
+
             
             # Interview-specific posture analysis
             good_posture, posture_feedback = analyze_interview_posture(
@@ -430,48 +382,8 @@ def process_frame(image, prev_hand_pos=None):
             
             # Display feedback
             status_color = (0, 255, 0) if good_posture else (0, 0, 255)
-            cv2.putText(
-                annotated_image, 
-                posture_feedback, 
-                (10, 120), 
-                cv2.FONT_HERSHEY_SIMPLEX, 
-                0.6, 
-                status_color, 
-                2
-            )
-        
-        # Add session analytics
-        cv2.putText(
-            annotated_image,
-            f"Session: {int(analytics.get_session_duration())}s",
-            (10, image.shape[0] - 90),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            2
-        )
-        
-        cv2.putText(
-            annotated_image,
-            f"Eye contact: {int(analytics.get_eye_contact_percentage())}%",
-            (10, image.shape[0] - 60),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            2
-        )
-        
-        cv2.putText(
-            annotated_image,
-            f"Most used gesture: {analytics.get_dominant_gesture()}",
-            (10, image.shape[0] - 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (255, 255, 255),
-            2
-        )
     
-    return annotated_image, current_hand_pos
+    return current_hand_pos
 
 def coach_video_file(path):
     # Open video source
@@ -479,14 +391,20 @@ def coach_video_file(path):
     
     # For tracking hand movement
     prev_hand_pos = None
-    
+
+    count = 0
+
     while cap.isOpened():
+        count += 1
+
         success, image = cap.read()
-        if not success:
+
+        if not success or count > 10:
             break
-        
-        annotated_image, prev_hand_pos = process_frame(image, prev_hand_pos)
-    
+
+        image = cv2.resize(image, (0 , 0), fx=0.25, fy=0.25) 
+        prev_hand_pos = process_frame(image, prev_hand_pos)
+
     # Clean up
     cap.release()
     
@@ -523,66 +441,3 @@ def coach_video_file(path):
     analysis['recommendations'] = recommendations
 
     return analysis
-
-def run_interview_coach(video_source=0):
-    """Main function to run the interview coach"""
-    print("Starting Interview Coach. Press 'q' to quit.")
-    print("This will analyze your body language for interview performance.")
-    
-    # Open video source
-    cap = cv2.VideoCapture(video_source)
-    
-    # For tracking hand movement
-    prev_hand_pos = None
-    
-    while cap.isOpened():
-        success, image = cap.read()
-        if not success:
-            print("Empty camera frame.")
-            continue
-        
-        # Process the frame
-        annotated_image, prev_hand_pos = process_frame(image, prev_hand_pos)
-        
-        # Display the image
-        cv2.imshow('Interview Body Language Coach', annotated_image)
-        
-        # Exit on 'q' press
-        if cv2.waitKey(5) & 0xFF == ord('q'):
-            break
-    
-    # Clean up
-    cap.release()
-    cv2.destroyAllWindows()
-    
-    # Print interview summary
-    print("\n=== INTERVIEW BODY LANGUAGE SUMMARY ===")
-    print(f"Session duration: {int(analytics.get_session_duration())} seconds")
-    print(f"Eye contact maintained: {int(analytics.get_eye_contact_percentage())}% of the time")
-    print(f"Good posture maintained: {100 - int(analytics.get_poor_posture_percentage())}% of the time")
-    print("Hand gesture breakdown:")
-    
-    for gesture, count in analytics.hand_gesture_counts.items():
-        if count > 0:
-            print(f"  - {gesture}: {count} times")
-    
-    print("\nRecommendations:")
-    if analytics.get_eye_contact_percentage() < 60:
-        print("- Work on maintaining more consistent eye contact")
-    if analytics.get_poor_posture_percentage() > 30:
-        print("- Focus on improving your seated posture during interviews")
-    if analytics.hand_gesture_counts["hand_near_face"] > 5:
-        print("- Try to avoid touching your face during interviews")
-    if analytics.hand_gesture_counts["excessive_movement"] > 10:
-        print("- Work on keeping your hands more still to appear confident")
-    
-    most_used = analytics.get_dominant_gesture()
-    if most_used == "closed_fist":
-        print("- Try to relax your hands more, open palms appear more honest")
-    elif most_used == "pointing" and analytics.hand_gesture_counts["pointing"] > 10:
-        print("- Reduce pointing gestures, they can appear too assertive")
-    
-    print("=======================================")
-
-if __name__ == "__main__":
-    run_interview_coach() 
