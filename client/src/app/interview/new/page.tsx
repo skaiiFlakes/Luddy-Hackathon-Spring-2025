@@ -4,16 +4,25 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Navbar from "@/components/navbar"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Mic, Square, Loader, Clock, Loader2 } from "lucide-react"
 import { saveAs } from "file-saver"
 import Image from "next/image"
 import aiInterviewService, { InterviewResponse } from "@/services/ai-interview-service"
 import axios from "axios"
+import { FALLBACK_FEEDBACK_DATA, FALLBACK_COACH_DATA } from "@/constants/feedback"
+import { transformFeedbackData } from "@/utils/transformFeedback"
+import { useToast } from "@/components/ui/use-toast"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 
 
 export default function ConductInterviewPage() {
-  const IS_TEST = true
+  const IS_TEST = false
   const isInitializedRef = useRef(false)
 
   const [isRecording, setIsRecording] = useState(false)
@@ -46,37 +55,46 @@ export default function ConductInterviewPage() {
   useEffect(() => {
     const initializeVideo = async () => {
       try {
+        // Get a single stream for both display and recording
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30 }
+          },
           audio: true
         });
 
+        // Set up video display
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
 
-        // Start recording the entire session
-        if (stream) {
-          const videoRecorder = new MediaRecorder(stream, {
-            mimeType: 'video/webm'
-          });
-          videoRecorderRef.current = videoRecorder;
+        // Start recording with optimized settings
+        const videoRecorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm;codecs=vp8,opus',
+          videoBitsPerSecond: 1500000 // 1.5 Mbps for better performance
+        });
+        videoRecorderRef.current = videoRecorder;
 
-          videoRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-              recordedVideoChunks.current.push(event.data);
-            }
-          };
+        videoRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedVideoChunks.current.push(event.data);
+          }
+        };
 
-          videoRecorder.start(1000); // Collect data every second
-          isSessionRecordingRef.current = true;
-        }
+        // Collect chunks every 10 seconds to reduce overhead
+        videoRecorder.start(10000);
+        isSessionRecordingRef.current = true;
       } catch (error) {
         console.error("Error accessing camera:", error);
       }
     };
 
-    initializeVideo();
+    // Only initialize video if we have a session ID
+    if (aiInterviewService.getSessionId()) {
+      initializeVideo();
+    }
 
     // Cleanup function to stop all tracks and recording when component unmounts
     return () => {
@@ -169,6 +187,37 @@ export default function ConductInterviewPage() {
         IS_TEST
       );
 
+      // Initialize video after successful API response
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 30 }
+        },
+        audio: true
+      });
+
+      // Set up video display
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+
+      // Start recording with optimized settings
+      const videoRecorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp8,opus',
+        videoBitsPerSecond: 1500000
+      });
+      videoRecorderRef.current = videoRecorder;
+
+      videoRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedVideoChunks.current.push(event.data);
+        }
+      };
+
+      videoRecorder.start(10000);
+      isSessionRecordingRef.current = true;
+
       setCurrentTranscript(introduction);
 
       // Start the timer only if it's not already running
@@ -189,37 +238,26 @@ export default function ConductInterviewPage() {
 
     } catch (error) {
       console.error("Error initializing interview:", error);
+      alert("Please allow camera and microphone access to start the interview.");
       setIsProcessing(false);
     }
   };
 
-
   // Start user's turn (recording)
   const startUserTurn = () => {
     if (!isUserTurn || isRecording) return;
-
     setIsRecording(true);
     recordedChunks.current = [];
-    recordedVideoChunks.current = [];
 
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
-
-      // Get audio track for audio recording
       const audioTrack = stream.getAudioTracks()[0];
       const audioStream = new MediaStream([audioTrack]);
       const mediaRecorder = new MediaRecorder(audioStream, {
-        mimeType: 'audio/webm'
+        mimeType: 'audio/webm;codecs=opus',
+        audioBitsPerSecond: 128000
       });
       mediaRecorderRef.current = mediaRecorder;
-
-      // Get video track for video recording
-      const videoTrack = stream.getVideoTracks()[0];
-      const videoStream = new MediaStream([videoTrack]);
-      const videoRecorder = new MediaRecorder(videoStream, {
-        mimeType: 'video/webm'
-      });
-      videoRecorderRef.current = videoRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -227,14 +265,7 @@ export default function ConductInterviewPage() {
         }
       };
 
-      videoRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          recordedVideoChunks.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.start();
-      videoRecorder.start();
+      mediaRecorder.start(1000); // Collect chunks every second for better transcription
     }
   };
 
@@ -245,33 +276,10 @@ export default function ConductInterviewPage() {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
     }
-    if (videoRecorderRef.current) {
-      videoRecorderRef.current.stop();
-    }
 
     setIsRecording(false);
     setIsProcessing(true);
     setShowTranscript(false);
-
-    // Create audio and video blobs from recorded chunks
-    await new Promise<void>((resolve) => {
-      if (mediaRecorderRef.current && videoRecorderRef.current) {
-        mediaRecorderRef.current.onstop = () => {
-          const audioBlob = new Blob(recordedChunks.current, { type: "audio/webm" });
-          const videoBlob = new Blob(recordedVideoChunks.current, { type: "video/webm" });
-
-          // Store both recordings
-          recordedSessions.current.push({
-            audio: audioBlob,
-            video: videoBlob
-          });
-
-          resolve();
-        };
-      } else {
-        resolve();
-      }
-    });
 
     try {
       // Convert the audio blob to base64
@@ -354,43 +362,116 @@ export default function ConductInterviewPage() {
         throw new Error("No active interview session");
       }
 
-      // Stop the session recording if it's still running
-      if (videoRecorderRef.current && isSessionRecordingRef.current) {
-        videoRecorderRef.current.stop();
-        isSessionRecordingRef.current = false;
+      // Stop recording if still running
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
       }
 
-      // Get the final video recording
-      const finalVideo = new Blob(recordedVideoChunks.current, { type: "video/webm" });
+      // Create final video blob from recorded chunks
+      const videoBlob = new Blob(recordedVideoChunks.current, { type: 'video/webm' });
 
-      // Convert video blob to base64 for localStorage storage
-      const reader = new FileReader();
-      reader.readAsDataURL(finalVideo);
-      reader.onloadend = () => {
-        const base64data = reader.result as string;
-        // Remove the data URL prefix to get just the base64 string
-        const base64String = base64data.split(',')[1];
+      // Download the webm file
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      saveAs(videoBlob, `interview-${timestamp}.webm`);
 
-        // Save interview data to localStorage
-        const interviewData = {
-          interviewer: interviewer,
-          interviewType: interviewType,
-          responses: aiInterviewService.getResponses(),
-          jobUrl: jobUrl,
-          duration: timer,
-          timestamp: new Date().toISOString(),
-          sessionId: sessionId,
-          videoBlob: base64String
-        };
+      // Get the master interviews list
+      const interviewsJson = localStorage.getItem('interviews');
+      const interviews = interviewsJson ? JSON.parse(interviewsJson) : {};
 
-        localStorage.setItem('interviewData', JSON.stringify(interviewData));
-
-        // Navigate to results page
-        router.push(`/interview/${sessionId}`);
+      // Prepare interview data
+      const interviewData = {
+        interviewer: interviewer,
+        interviewType: interviewType,
+        responses: aiInterviewService.getResponses(),
+        jobUrl: jobUrl,
+        duration: timer,
+        timestamp: new Date().toISOString(),
+        sessionId: sessionId
       };
 
+      // Call both APIs in parallel
+      const [feedbackResponse, coachResponse] = await Promise.all([
+        axios.get(`http://localhost:5000/api/interview/${sessionId}/feedback`),
+        (async () => {
+          const formData = new FormData();
+          formData.append('file', videoBlob, 'interview.webm');
+          return axios.post('http://localhost:5000/api/coach', formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          });
+        })()
+      ]);
+
+      // Use API responses if successful, otherwise use fallback data
+      const feedbackData = feedbackResponse.status === 200
+        ? feedbackResponse.data
+        : FALLBACK_FEEDBACK_DATA;
+
+      const coachData = coachResponse.status === 200
+        ? coachResponse.data
+        : FALLBACK_COACH_DATA;
+
+      // Create final interview data
+      const finalInterviewData = {
+        ...interviewData,
+        analysis: {
+          ...transformFeedbackData(feedbackData),
+          body_language: [{
+            attribute: "Eye Contact",
+            timestamp: "00:00",
+            score: coachData.eye_contact,
+            explanation: `Maintained eye contact ${coachData.eye_contact}% of the time. ${coachData.recommendations[0]}`
+          }, {
+            attribute: "Posture",
+            timestamp: "00:00",
+            score: coachData.posture,
+            explanation: `Posture score: ${coachData.posture}/100. ${coachData.recommendations[2]}`
+          }, {
+            attribute: "Gestures",
+            timestamp: "00:00",
+            score: Math.min(100, coachData.gestures.length * 20),
+            explanation: `Observed gestures: ${coachData.gestures.join(", ")}. ${coachData.recommendations[1]}`
+          }]
+        }
+      };
+
+      // Save to master interviews list
+      interviews[sessionId] = finalInterviewData;
+      localStorage.setItem('interviews', JSON.stringify(interviews));
+
+      // Navigate to results page
+      router.push(`/interview/${sessionId}`);
     } catch (error) {
-      console.error("Error preparing interview analysis:", error);
+      console.error("Error analyzing interview:", error);
+      // Use fallback data if API calls fail
+      const transformedFeedbackData = transformFeedbackData(FALLBACK_FEEDBACK_DATA);
+      const fallbackData = {
+        ...interviewData,
+        analysis: {
+          ...transformedFeedbackData,
+          body_language: [{
+            attribute: "Eye Contact",
+            timestamp: "00:00",
+            score: FALLBACK_COACH_DATA.eye_contact,
+            explanation: FALLBACK_COACH_DATA.recommendations[0]
+          }, {
+            attribute: "Posture",
+            timestamp: "00:00",
+            score: FALLBACK_COACH_DATA.posture,
+            explanation: FALLBACK_COACH_DATA.recommendations[2]
+          }]
+        }
+      };
+
+      // Save fallback data to master interviews list
+      const interviewsJson = localStorage.getItem('interviews');
+      const interviews = interviewsJson ? JSON.parse(interviewsJson) : {};
+      interviews[sessionId] = fallbackData;
+      localStorage.setItem('interviews', JSON.stringify(interviews));
+
+      // Navigate to results page
+      router.push(`/interview/${sessionId}`);
     }
   };
 
@@ -488,9 +569,12 @@ export default function ConductInterviewPage() {
                 </div>
               ) : <></>}
             </Card>
-            <Button onClick={handleAnalyzeInterview} className="w-full">
-              Analyze Interview
-            </Button>
+
+            {(IS_TEST) ? (
+              <Button onClick={handleAnalyzeInterview} className="w-full">
+                Analyze Interview
+              </Button>
+            ) : <></>}
           </div>
         </div>
 
