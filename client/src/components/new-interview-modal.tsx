@@ -39,7 +39,7 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
   const [urlError, setUrlError] = useState<string | null>(null)
   const [interviewer, setInterviewer] = useState("todd")
   const [personality, setPersonality] = useState("friendly") // Default matches initial interviewer (todd)
-  const [interviewType, setInterviewType] = useState("mixed")
+  const [interviewType, setInterviewType] = useState("behavioral")
   const [useGeneralResume, setUseGeneralResume] = useState(true)
   const [hasGeneralResume, setHasGeneralResume] = useState(false)
   const [specialResume, setSpecialResume] = useState<any>(null)
@@ -100,6 +100,11 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
             content: event.target.result,
             uploadDate: new Date().toISOString()
           })
+          localStorage.setItem('specialResume', JSON.stringify({
+            name: file.name,
+            content: event.target.result,
+            uploadDate: new Date().toISOString()
+          }))
         }
       }
 
@@ -124,12 +129,15 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
       resumeData = specialResume
     }
 
-    // Include focus areas in the query if they are applicable
-    let focusAreasParam = '';
-    if (interviewType === 'behavioral' && technicalFocusAreas.length > 0) {
-      focusAreasParam = technicalFocusAreas.join(',');
-    } else if (interviewType === 'technical' && behavioralFocusAreas.length > 0) {
-      focusAreasParam = behavioralFocusAreas.join(',');
+    // Include focus areas based on interview type
+    let focusAreas: string[] = [];
+    if (interviewType === 'behavioral') {
+      focusAreas = behavioralFocusAreas;
+    } else if (interviewType === 'technical') {
+      focusAreas = technicalFocusAreas;
+    } else if (interviewType === 'mixed') {
+      // For mixed, include both types of focus areas
+      focusAreas = [...behavioralFocusAreas, ...technicalFocusAreas];
     }
 
     // Include all parameters in the query
@@ -137,18 +145,9 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
       interviewer,
       jobUrl: encodeURIComponent(jobUrl),
       interviewType,
-      hasResume: resumeData ? 'true' : 'false'
+      hasResume: resumeData ? 'true' : 'false',
+      focusAreas: focusAreas.join(',')
     })
-
-    // Add focus areas to query params if they exist
-    if (focusAreasParam) {
-      queryParams.append('focusAreas', focusAreasParam);
-    }
-
-    // Store the special resume temporarily in sessionStorage if needed
-    if (specialResume && !useGeneralResume) {
-      sessionStorage.setItem('specialResume', JSON.stringify(specialResume))
-    }
 
     router.push(`/interview/new?${queryParams.toString()}`)
     onClose()
@@ -254,15 +253,15 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
                   <RadioGroupItem value="technical" id="technical" />
                   <Label htmlFor="technical">Technical</Label>
                 </div>
-                <div className="flex items-center space-x-2">
+                {/* <div className="flex items-center space-x-2">
                   <RadioGroupItem value="mixed" id="mixed" />
                   <Label htmlFor="mixed">Mixed</Label>
-                </div>
+                </div> */}
               </RadioGroup>
             </div>
 
             {/* Focus Areas Section - conditionally rendered based on interview type */}
-            {interviewType === 'technical' && (
+            {interviewType === 'behavioral' && (
               <div className="grid gap-3">
                 <Label>Behavioral Focus Areas</Label>
                 <div className="grid grid-cols-2 gap-2">
@@ -280,7 +279,7 @@ export default function NewInterviewModal({ isOpen, onClose }: NewInterviewModal
               </div>
             )}
 
-            {interviewType === 'behavioral' && (
+            {interviewType === 'technical' && (
               <div className="grid gap-3">
                 <Label>Technical Focus Areas</Label>
                 <div className="grid grid-cols-2 gap-2">

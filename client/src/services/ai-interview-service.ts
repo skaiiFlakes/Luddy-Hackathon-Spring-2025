@@ -1,4 +1,5 @@
 import { SourceTextModule } from "vm";
+import axios from 'axios';
 
 export interface InterviewResponse {
     text: string;
@@ -25,6 +26,7 @@ class AIInterviewService {
     private useElevenlabs: boolean = false;
     private interviewerName: string = 'todd';
     private interviewFinished: boolean = false;
+    private host = "http://localhost:5000";
 
     constructor() {
         if (typeof window !== 'undefined') {
@@ -45,24 +47,74 @@ class AIInterviewService {
 
         // Call the API to start a new interview
         try {
-            const response = await fetch('http://localhost:5000/api/start_interview', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    interviewer,
-                    interview_type: interviewType,
-                    focus_areas: focusAreas,
-                    job_link: jobLink,
-                }),
-            });
+            console.log(`Starting interview with ${interviewer}...`);
 
-            if (!response.ok) {
-                throw new Error(`Failed to start interview: ${response.statusText}`);
+            // Create FormData to handle file upload
+            const formData = new FormData();
+
+            // Add form fields directly
+            formData.append('interviewer', interviewer);
+            formData.append('interview_type', interviewType);
+            formData.append('focus_areas', JSON.stringify(focusAreas));
+            formData.append('job_link', jobLink);
+
+            // Check for resume from different sources
+            let resumeData = null;
+
+            // First check sessionStorage for a special resume (from the modal)
+            const specialResume = localStorage.getItem('specialResume');
+            if (specialResume) {
+                resumeData = JSON.parse(specialResume);
+                console.log('Using special resume from session storage');
+
+                // Clear the session storage after use
+                localStorage.removeItem('specialResume');
             }
 
-            const data = await response.json();
+            // If no special resume, check localStorage for general resume
+            if (!resumeData) {
+                const generalResume = localStorage.getItem('generalResume');
+                if (generalResume) {
+                    resumeData = JSON.parse(generalResume);
+                    console.log('Using general resume from local storage');
+                }
+            }
+
+            // If we have resume data with content, add it to the form
+            if (resumeData && resumeData.content) {
+                // The content should be a base64 string
+                const contentStr = resumeData.content.toString();
+                // Check if it's a data URL (starts with data:)
+                if (contentStr.startsWith('data:')) {
+                    // Convert base64 to blob
+                    const byteString = atob(contentStr.split(',')[1]);
+                    const mimeString = contentStr.split(',')[0].split(':')[1].split(';')[0];
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+
+                    for (let i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+
+                    const blob = new Blob([ab], { type: mimeString });
+                    formData.append('file', blob, 'resume.pdf');
+                    console.log('Resume added to form data');
+                } else {
+                    console.error('Resume content is not in expected format');
+                }
+            } else {
+                console.log('No resume found to include in the request');
+            }
+
+            const response = await axios.post(`${this.host}/api/start_interview`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+                withCredentials: true, // Include cookies if authentication is cookie-based
+            });
+
+            const data = response.data;
+            console.log(data)
             this.sessionId = data.session_id;
 
             // Store the introduction as the first AI response
@@ -83,38 +135,32 @@ class AIInterviewService {
     }
 
     // Process user response and get the next AI step
-    public async processUserResponse(audioBlob: Blob, transcript: string): Promise<{text: string, isFinished: boolean}> {
+    public async processUserResponse(audioData: string): Promise<{text: string, isFinished: boolean}> {
         if (!this.sessionId) {
             throw new Error('No active interview session');
         }
 
         // Add user response to the responses array
         this.responses.push({
-            text: transcript,
+            text: '', // Empty text since we don't have transcription
             type: 'user',
-            timestamp: Date.now(),
-            videoBlob: audioBlob,
-            audioBlob: audioBlob
+            timestamp: Date.now()
         });
 
         // Call the API to get the next response
         try {
-            const responseApiUrl = `http://localhost:5000/api/interview/${this.sessionId}/next_response`;
-            const responseResult = await fetch(responseApiUrl, {
-                method: 'POST',
+            const responseApiUrl = `${this.host}/api/interview/${this.sessionId}/next_response`;
+
+            const responseResult = await axios.post(responseApiUrl, {
+                data: audioData
+            }, {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    transcription: transcript
-                }),
+                withCredentials: true, // Include cookies if authentication is cookie-based
             });
 
-            if (!responseResult.ok) {
-                throw new Error(`Failed to get next response: ${responseResult.statusText}`);
-            }
-
-            const responseData = await responseResult.json();
+            const responseData = responseResult.data;
 
             // Add AI response to the responses array
             const aiResponse: InterviewResponse = {
@@ -135,14 +181,12 @@ class AIInterviewService {
             }
 
             // If it's not a follow-up, get the next question
-            const questionApiUrl = `http://localhost:5000/api/interview/${this.sessionId}/next_question`;
-            const questionResult = await fetch(questionApiUrl);
+            const questionApiUrl = `${this.host}/api/interview/${this.sessionId}/next_question`;
+            const questionResult = await axios.get(questionApiUrl, {
+                withCredentials: true, // Include cookies if authentication is cookie-based
+            });
 
-            if (!questionResult.ok) {
-                throw new Error(`Failed to get next question: ${questionResult.statusText}`);
-            }
-
-            const questionData = await questionResult.json();
+            const questionData = questionResult.data;
 
             let nextText: string;
             let isFinished: boolean = questionData.finished;
@@ -198,19 +242,19 @@ class AIInterviewService {
         const voiceConfigs: Record<string, AudioConfig> = {
             'todd': {
                 voice: 'en-US-BryanNeural',
-                rate: 0.9,
+                rate: 1,
                 pitch: 1,
                 elevenlabsVoiceId: '5Q0t7uMcjvnagumLfvZi' // Liam voice (friendly male)
             },
             'jeff': {
                 voice: 'en-US-DavisNeural',
-                rate: 1,
+                rate: 1.1,
                 pitch: -1,
                 elevenlabsVoiceId: 'ZQe5CZNOzWyzPSCn5a3c' // Jeremy voice (deep, professional)
             },
             'karen': {
                 voice: 'en-US-JennyNeural',
-                rate: 1.1,
+                rate: 1.2,
                 pitch: 2,
                 elevenlabsVoiceId: '5PWbsfogbLtky5sxqtBz'//'jsCqWAovK2LkecY7zXl4'  // Freya voice (female)
             },
@@ -249,13 +293,8 @@ class AIInterviewService {
         const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
         const config = this.getAudioConfig();
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'xi-api-key': this.elevenlabsApiKey!
-            },
-            body: JSON.stringify({
+        try {
+            const response = await axios.post(url, {
                 text,
                 model_id: 'eleven_monolingual_v1',
                 voice_settings: {
@@ -263,26 +302,31 @@ class AIInterviewService {
                     similarity_boost: 0.9,
                     speed: config.rate,
                 }
-            })
-        });
+            }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'xi-api-key': this.elevenlabsApiKey!
+                },
+                responseType: 'blob'
+            });
 
-        if (!response.ok) {
-            throw new Error(`ElevenLabs API error: ${response.status}`);
+            const audioBlob = response.data;
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+
+            return new Promise((resolve) => {
+                audio.onended = () => {
+                    URL.revokeObjectURL(audioUrl);
+                    // Update the end timestamp for the last AI response
+                    this.updateLastAIResponseEndTime(Date.now());
+                    resolve();
+                };
+                audio.play();
+            });
+        } catch (error) {
+            console.error('Error with ElevenLabs TTS:', error);
+            throw error;
         }
-
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-
-        return new Promise((resolve) => {
-            audio.onended = () => {
-                URL.revokeObjectURL(audioUrl);
-                // Update the end timestamp for the last AI response
-                this.updateLastAIResponseEndTime(Date.now());
-                resolve();
-            };
-            audio.play();
-        });
     }
 
     // Enhanced Web Speech API implementation

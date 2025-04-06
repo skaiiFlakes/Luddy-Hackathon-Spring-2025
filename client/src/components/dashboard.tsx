@@ -18,6 +18,30 @@ interface InterviewData {
   duration: number;
   timestamp: string;
   analysis?: any;
+  metadata?: {
+    company: string;
+    job_title: string;
+    job_description: string;
+    job_url: string;
+  };
+}
+
+interface Resource {
+  title: string;
+  url: string;
+}
+
+interface FeedbackItem {
+  question: string;
+  wentWell: string;
+  improvements: string;
+}
+
+interface AnalysisItem {
+  attribute: string;
+  timestamp: string;
+  score: number;
+  explanation: string;
 }
 
 interface DashboardProps {
@@ -38,70 +62,6 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("qna")
 
-  // Use mock data as fallback if no real data is provided
-  const mockData = {
-    company: "TechCorp Inc.",
-    jobTitle: "Senior Frontend Developer",
-    dateTime: "May 15, 2023 • 2:30 PM",
-    jobDescription: `We are looking for an Interaction Designer to join our team. The ideal candidate will have a Bachelor's degree or equivalent practical experience, with at least 4 years of experience in product design or User Experience (UX). You should have experience designing across multiple platforms and collaborating with technical/design teams to create user flows, wireframes, and user interface mockups and prototypes. A portfolio or any related link to your work should be included in your resume.
-Preferred qualifications:
-- Master's degree in Design, Human-Computer Interaction, Computer Science, or a related field, or equivalent practical experience.
-- 2 years of experience working in a cross-functional organization.
-- 1 year of experience in leading design projects.
-- Experience with technical constraints and limitations, with excellent problem-solving skills.
-- Ability to guide and ideate products from scratch and improve features.
-- Excellent communication and collaboration skills for product design strategy.
-About the job
-At Google, we follow a simple but vital premise: 'Focus on the user and all else will follow.' Google's Interaction Designers take complex tasks and make them intuitive and easy-to-use for billions of people around the globe. Throughout the design process—from creating user flows and wireframes to building user interface mockups and prototypes—you'll envision how
-`,
-    resources: [
-      { title: "Company Website", url: "https://interviewiq.com" },
-      { title: "Job Description", url: "https://interviewiq.com/jobs/senior-frontend-developer" },
-      { title: "Company Culture", url: "https://interviewiq.com/about/culture" },
-      { title: "Tech Stack Overview", url: "https://interviewiq.com/tech" },
-      { title: "Interview Preparation Guide", url: "https://interviewiq.com/guides/interview-prep" },
-    ],
-    summary:
-      "The candidate demonstrated strong technical knowledge in frontend development, particularly in React and state management. They articulated their experience well and provided concrete examples of past projects. Communication skills were excellent, with clear and concise responses. Areas for improvement include more detailed explanations of architectural decisions and stronger examples of team leadership. Overall, a strong candidate who would be a good fit for the Senior Frontend Developer role.",
-    transcript: [
-      {
-        "timestamp": "00:00",
-        "text": "Interviewer: Hello and welcome to the interview. Could you start by introducing yourself and telling us about your background?"
-      },
-      {
-        "timestamp": "00:15",
-        "text": "Candidate: Hi, thank you for having me. I'm Alex, a frontend developer with 6 years of experience in the field."
-      }
-    ],
-    qnaFeedback: [
-      {
-        question: "Tell us about your background",
-        wentWell:
-          "The candidate provided a clear and concise overview of their experience, highlighting relevant technologies and their current role. The response was well-structured and easy to follow.",
-        improvements:
-          "Could have included more specific achievements or metrics to demonstrate impact in previous roles. Adding a brief mention of educational background would have provided a more complete picture.",
-      }
-    ],
-    toneVoice: [
-      {
-        attribute: "Clarity",
-        timestamp: "00:15",
-        score: 85,
-        explanation:
-          "The candidate spoke clearly and articulated thoughts well. Technical concepts were explained in an accessible way without oversimplifying. Occasional use of industry jargon was appropriate for the context.",
-      }
-    ],
-    bodyLanguage: [
-      {
-        attribute: "Posture",
-        timestamp: "00:15",
-        score: 85,
-        explanation:
-          "Maintained good upright posture throughout most of the interview, conveying attentiveness and professionalism. Occasionally leaned forward when discussing topics of interest, which showed engagement.",
-      }
-    ],
-  }
-
   // Format time as mm:ss
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
@@ -116,22 +76,22 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
   }
 
   // Prepare the actual data to display
-  const displayData = interviewData ? {
-    company: interviewData.jobUrl ? new URL(interviewData.jobUrl).hostname : "Unknown Company",
-    jobTitle: "Interview Analysis",
-    dateTime: interviewData.timestamp ? formatDateTime(interviewData.timestamp) : "Recent Interview",
-    jobDescription: interviewData.analysis?.job_description || "No job description available.",
-    duration: interviewData.duration,
-    resources: interviewData.analysis?.resources || [],
-    summary: interviewData.analysis?.summary || "Analysis not available. This interview has been recorded and will be analyzed soon.",
-    transcript: interviewData.responses.map((response, index) => ({
-      timestamp: formatTime(Math.floor((response.timestamp - interviewData.responses[0].timestamp) / 1000)),
+  const displayData = {
+    company: interviewData?.analysis?.metadata?.company || "Unknown Company",
+    jobTitle: interviewData?.analysis?.metadata?.job_title || "Unknown Job Title",
+    jobUrl: interviewData?.analysis?.metadata?.job_url || "No job URL available.",
+    jobDescription: interviewData?.analysis?.metadata?.job_description || "No job description available.",
+    dateTime: interviewData?.timestamp ? formatDateTime(interviewData.timestamp) : "Recent Interview",
+    resources: interviewData?.analysis?.resources || [],
+    summary: interviewData?.analysis?.evaluation.summary || "Analysis not available. This interview has been recorded and will be analyzed soon.",
+    transcript: interviewData?.responses.map((response, index) => ({
+      timestamp: formatTime(Math.floor((response.timestamp - interviewData?.responses[0]?.timestamp) / 1000)),
       text: `${response.type === 'ai' ? 'Interviewer' : 'You'}: ${response.text}`
     })),
-    qnaFeedback: interviewData.analysis?.qna_feedback || [],
-    toneVoice: interviewData.analysis?.tone_voice || [],
-    bodyLanguage: interviewData.analysis?.body_language || []
-  } : mockData;
+    qnaFeedback: interviewData?.analysis?.qna_feedback || [],
+    toneVoice: interviewData?.analysis?.tone_voice || [],
+    bodyLanguage: interviewData?.analysis?.body_language || []
+  };
 
   // Function to determine color based on score
   const getScoreColor = (score: number) => {
@@ -143,8 +103,8 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
   const calculateOverallScore = () => {
     // Combine all scores from tone/voice and body language
     const allScores = [
-      ...displayData.toneVoice.map((item) => item.score),
-      ...displayData.bodyLanguage.map((item) => item.score),
+      ...displayData.toneVoice.map((item: AnalysisItem) => item.score),
+      ...displayData.bodyLanguage.map((item: AnalysisItem) => item.score),
     ]
 
     // If no scores are available, return a default score
@@ -199,7 +159,7 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
             </CardHeader>
             <CardContent className="flex flex-col h-[calc(100vh-9.5rem)]">
               <ScrollArea className="flex-grow">
-                {displayData.jobDescription.split("\n").map((line, index) => (
+                {displayData.jobDescription.split("\n").map((line: string, index: number) => (
                   <p key={index} className="mb-2 text-sm text-muted-foreground">
                     {line}
                   </p>
@@ -212,7 +172,7 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
                     <h3 className="text-lg font-semibold mb-2">Resources</h3>
                     <ScrollArea className="h-40">
                       <ul className="space-y-1.5">
-                        {displayData.resources.map((resource, index) => (
+                        {displayData.resources.map((resource: Resource, index: number) => (
                           <li key={index}>
                             <a
                               href={resource.url}
@@ -241,9 +201,6 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
                   <CardDescription className="text-sm">{displayData.company}</CardDescription>
                   <CardTitle className="text-lg">{displayData.jobTitle}</CardTitle>
                   <CardDescription>{displayData.dateTime}</CardDescription>
-                  {interviewData && (
-                    <CardDescription>Duration: {formatTime(interviewData.duration)}</CardDescription>
-                  )}
                 </div>
                 {calculateOverallScore() > 0 && (
                   <div className="flex items-center gap-2 bg-muted/60 border px-4 py-2 rounded-md ">
@@ -351,7 +308,7 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
                   <ScrollArea className="h-[calc(100vh-11rem)]">
                     <div className="space-y-4">
                       {displayData.qnaFeedback.length > 0 ? (
-                        displayData.qnaFeedback.map((feedback, index) => (
+                        displayData.qnaFeedback.map((feedback: FeedbackItem, index: number) => (
                           <Card key={index}>
                             <CardHeader className="pb-2">
                               <CardTitle className="text-base">{feedback.question}</CardTitle>
@@ -385,12 +342,11 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
                   <ScrollArea className="h-[calc(100vh-11rem)]">
                     <div className="space-y-4">
                       {displayData.toneVoice.length > 0 ? (
-                        displayData.toneVoice.map((item, index) => (
+                        displayData.toneVoice.map((item: AnalysisItem, index: number) => (
                           <Card key={index}>
                             <CardHeader className="pb-2">
                               <div className="flex justify-between items-center">
                                 <CardTitle className="text-base">{item.attribute}</CardTitle>
-                                <span className="text-xs text-muted-foreground">{item.timestamp}</span>
                               </div>
                             </CardHeader>
                             <CardContent>
@@ -423,12 +379,11 @@ At Google, we follow a simple but vital premise: 'Focus on the user and all else
                   <ScrollArea className="h-[calc(100vh-11rem)]">
                     <div className="space-y-4">
                       {displayData.bodyLanguage.length > 0 ? (
-                        displayData.bodyLanguage.map((item, index) => (
+                        displayData.bodyLanguage.map((item: AnalysisItem, index: number) => (
                           <Card key={index}>
                             <CardHeader className="pb-2">
                               <div className="flex justify-between items-center">
                                 <CardTitle className="text-base">{item.attribute}</CardTitle>
-                                <span className="text-xs text-muted-foreground">{item.timestamp}</span>
                               </div>
                             </CardHeader>
                             <CardContent>

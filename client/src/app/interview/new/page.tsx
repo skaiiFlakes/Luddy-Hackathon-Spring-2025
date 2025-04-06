@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Navbar from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Mic, Square, Loader, Clock } from "lucide-react"
+import { Mic, Square, Loader, Clock, Loader2 } from "lucide-react"
 import { saveAs } from "file-saver"
 import Image from "next/image"
 import aiInterviewService, { InterviewResponse } from "@/services/ai-interview-service"
@@ -22,6 +22,9 @@ export default function ConductInterviewPage() {
   const [timer, setTimer] = useState(0)
   const [isTimerRunning, setIsTimerRunning] = useState(false)
   const [showTranscript, setShowTranscript] = useState(false)
+  const [interviewType, setInterviewType] = useState("mixed")
+  const [jobUrl, setJobUrl] = useState("")
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   const router = useRouter()
   const [fadeIn, setFadeIn] = useState(false)
@@ -30,8 +33,38 @@ export default function ConductInterviewPage() {
   // Video functionality
   const videoRef = useRef<HTMLVideoElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const videoRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunks = useRef<Blob[]>([])
-  const recordedSessions = useRef<{video: Blob, transcript: string}[]>([])
+  const recordedVideoChunks = useRef<Blob[]>([])
+  const recordedSessions = useRef<{video: Blob, audio: Blob}[]>([])
+
+  // Initialize video stream
+  useEffect(() => {
+    const initializeVideo = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        console.error("Error accessing camera:", error);
+      }
+    };
+
+    initializeVideo();
+
+    // Cleanup function to stop all tracks when component unmounts
+    return () => {
+      if (videoRef.current?.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
 
   // Format time as mm:ss
   const formatTime = (seconds: number): string => {
@@ -76,18 +109,20 @@ export default function ConductInterviewPage() {
     const interviewType = queryParams.get("interviewType") || "mixed"
     const focusAreas = queryParams.get("focusAreas") || ""
 
-
     if (queryParams.has("interviewer") || queryParams.has("jobUrl") || queryParams.has("interviewType") || queryParams.has("focusAreas")) {
       setInterviewer(selectedInterviewer);
       console.log(selectedInterviewer, interviewType, urlJobUrl, focusAreas);
-      initializeInterview(selectedInterviewer, interviewType, urlJobUrl, focusAreas);
+      initializeInterview(selectedInterviewer, interviewType, urlJobUrl, focusAreas.split(','));
     }
 
     const timer = setTimeout(() => setFadeIn(true), 0);
-    return () => clearTimeout(timer);
-  }, [router]);
+    return () => {
+      clearTimeout(timer);
+      stopTimer(); // Clean up timer on unmount
+    };
+  }, []); // Empty dependency array to run only once on mount
 
-  const initializeInterview = async (selectedInterviewer: string, selectedType: string, jobLink: string, selectedFocusAreas) => {
+  const initializeInterview = async (selectedInterviewer: string, selectedType: string, jobLink: string, selectedFocusAreas: string[]) => {
     setIsProcessing(true);
 
     try {
@@ -101,17 +136,20 @@ export default function ConductInterviewPage() {
 
       setCurrentTranscript(introduction);
 
-      // Start the timer
-      startTimer();
+      // Start the timer only if it's not already running
+      if (!isTimerRunning) {
+        startTimer();
+      }
 
       // Begin AI speaking
+      setIsProcessing(false);
       setIsSpeaking(true);
-      await aiInterviewService.speakText(introduction);
+      // TEMPORARY
+      // await aiInterviewService.speakText(introduction);
       setIsSpeaking(false);
 
       // Switch to user's turn
       setIsUserTurn(true);
-      setIsProcessing(false);
 
     } catch (error) {
       console.error("Error initializing interview:", error);
@@ -126,11 +164,26 @@ export default function ConductInterviewPage() {
 
     setIsRecording(true);
     recordedChunks.current = [];
+    recordedVideoChunks.current = [];
 
     if (videoRef.current && videoRef.current.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
-      const mediaRecorder = new MediaRecorder(stream);
+
+      // Get audio track for audio recording
+      const audioTrack = stream.getAudioTracks()[0];
+      const audioStream = new MediaStream([audioTrack]);
+      const mediaRecorder = new MediaRecorder(audioStream, {
+        mimeType: 'audio/webm'
+      });
       mediaRecorderRef.current = mediaRecorder;
+
+      // Get video track for video recording
+      const videoTrack = stream.getVideoTracks()[0];
+      const videoStream = new MediaStream([videoTrack]);
+      const videoRecorder = new MediaRecorder(videoStream, {
+        mimeType: 'video/webm'
+      });
+      videoRecorderRef.current = videoRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -138,7 +191,14 @@ export default function ConductInterviewPage() {
         }
       };
 
+      videoRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedVideoChunks.current.push(event.data);
+        }
+      };
+
       mediaRecorder.start();
+      videoRecorder.start();
     }
   };
 
@@ -149,24 +209,25 @@ export default function ConductInterviewPage() {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
     }
+    if (videoRecorderRef.current) {
+      videoRecorderRef.current.stop();
+    }
 
     setIsRecording(false);
     setIsProcessing(true);
     setShowTranscript(false);
 
-    // Capture the current transcript before clearing
-    const userTranscript = currentTranscript;
-
-    // Create video blob from recorded chunks
+    // Create audio and video blobs from recorded chunks
     await new Promise<void>((resolve) => {
-      if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current && videoRecorderRef.current) {
         mediaRecorderRef.current.onstop = () => {
-          const videoBlob = new Blob(recordedChunks.current, { type: "video/webm" });
+          const audioBlob = new Blob(recordedChunks.current, { type: "audio/webm" });
+          const videoBlob = new Blob(recordedVideoChunks.current, { type: "video/webm" });
 
-          // Store the recording
+          // Store both recordings
           recordedSessions.current.push({
-            video: videoBlob,
-            transcript: userTranscript
+            audio: audioBlob,
+            video: videoBlob
           });
 
           resolve();
@@ -177,10 +238,21 @@ export default function ConductInterviewPage() {
     });
 
     try {
+      // Convert the audio blob to base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => {
+          const base64data = reader.result as string;
+          const base64Content = base64data.split(',')[1];
+          resolve(base64Content);
+        };
+      });
+      reader.readAsDataURL(new Blob(recordedChunks.current, { type: "audio/webm" }));
+      const base64data = await base64Promise;
+
       // Process the user's response through the API
       const { text, isFinished } = await aiInterviewService.processUserResponse(
-        new Blob(recordedChunks.current, { type: "video/webm" }),
-        userTranscript
+        base64data
       );
 
       // Update the transcript with AI's response
@@ -193,8 +265,10 @@ export default function ConductInterviewPage() {
       }
 
       // Begin AI speaking
+      setIsProcessing(false);
       setIsSpeaking(true);
-      await aiInterviewService.speakText(text);
+      // TEMPORARY
+      // await aiInterviewService.speakText(text);
       setIsSpeaking(false);
 
       // If interview is not complete, switch back to user's turn
@@ -238,24 +312,18 @@ export default function ConductInterviewPage() {
 
   const handleAnalyzeInterview = async () => {
     try {
-      // Prepare all recordings as an array
-      const formData = new FormData();
-
-      // Add session ID to the form data
       const sessionId = aiInterviewService.getSessionId();
-      if (sessionId) {
-        formData.append('session_id', sessionId);
+      if (!sessionId) {
+        throw new Error("No active interview session");
       }
 
-      recordedSessions.current.forEach((session, index) => {
-        formData.append(`video_${index}`, session.video);
-        formData.append(`transcript_${index}`, session.transcript);
-      });
+      // Get the final video recording
+      const finalVideo = recordedSessions.current[recordedSessions.current.length - 1]?.video;
+      if (!finalVideo) {
+        throw new Error("No video recording found");
+      }
 
-      formData.append('interviewer', interviewer);
-      formData.append('interview_type', interviewType);
-
-      // Save interview data to localStorage to pass to the interview/[id] page
+      // Save interview data to localStorage
       const interviewData = {
         interviewer: interviewer,
         interviewType: interviewType,
@@ -264,41 +332,22 @@ export default function ConductInterviewPage() {
         duration: timer,
         timestamp: new Date().toISOString(),
         sessionId: sessionId,
+        videoBlob: finalVideo
       };
 
       localStorage.setItem('interviewData', JSON.stringify(interviewData));
 
-      // Save last video locally for demo purposes
-      if (recordedSessions.current.length > 0) {
-        const lastSession = recordedSessions.current[recordedSessions.current.length - 1];
-        saveAs(lastSession.video, "interview-video.webm");
-      }
-
       // Navigate to results page
-      router.push(`/interview/1`);
+      router.push(`/interview/${sessionId}`);
 
-      // Uncomment to send to backend
-      /*
-      const response = await fetch("http://localhost:5000/api/analyze-interview", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to analyze interview");
-      }
-
-      const data = await response.json();
-      router.push(`/interview/${data.interviewId}`);
-      */
     } catch (error) {
-      console.error("Error analyzing interview:", error);
+      console.error("Error preparing interview analysis:", error);
     }
   };
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Navbar onNewInterview={() => setIsModalOpen(true)} />
+      <Navbar onOpenModal={() => setIsModalOpen(true)} />
       <div className={`container flex flex-1 items-center justify-center py-8 relative w-100vw ${
               fadeIn ? "opacity-100" : "opacity-0"
             } transition-opacity duration-1000`} >
@@ -372,7 +421,11 @@ export default function ConductInterviewPage() {
                       Stop Recording
                     </Button>
                   ) : (
-                    <Button onClick={startUserTurn} className="w-full">
+                    <Button
+                      onClick={startUserTurn}
+                      className="w-full"
+                      disabled={isProcessing}
+                    >
                       <Mic className="mr-2 h-4 w-4" />
                       Start Speaking
                     </Button>
