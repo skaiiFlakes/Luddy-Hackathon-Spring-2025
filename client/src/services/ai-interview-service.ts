@@ -143,13 +143,6 @@ class AIInterviewService {
             throw new Error('No active interview session');
         }
 
-        // Add user response to the responses array
-        this.responses.push({
-            text: '', // Empty text since we don't have transcription
-            type: 'user',
-            timestamp: Date.now()
-        });
-
         // Call the API to get the next response
         try {
             const responseApiUrl = `${this.host}/api/interview/${this.sessionId}/next_response`;
@@ -165,8 +158,14 @@ class AIInterviewService {
 
             const responseData = responseResult.data;
 
+            this.responses.push({
+                text: responseData.transcription,
+                type: 'user',
+                timestamp: Date.now()
+            });
+
             // Add AI response to the responses array
-            const aiResponse: InterviewResponse = {
+            /*const aiResponse: InterviewResponse = {
                 text: responseData.interviewer_reply,
                 type: 'ai',
                 timestamp: Date.now(),
@@ -181,7 +180,7 @@ class AIInterviewService {
                     text: responseData.interviewer_reply,
                     isFinished: false
                 };
-            }
+            }*/
 
             // If it's not a follow-up, get the next question
             const questionApiUrl = `${this.host}/api/interview/${this.sessionId}/next_question`;
@@ -190,7 +189,7 @@ class AIInterviewService {
             });
 
             const questionData = questionResult.data;
-
+            console.log(questionData)
             let nextText: string;
             let isFinished: boolean = questionData.finished;
 

@@ -148,7 +148,7 @@ export default function Dashboard({ interviewId, interviewData, loading = false 
             </CardHeader>
             <CardContent className="flex flex-col h-[calc(100%-5rem)]">
               <div className="flex-none">
-                <div className="text-sm text-muted-foreground mb-4 prose prose-sm max-w-none">
+                <div className="prose prose-sm">
                   <ReactMarkdown>{displayData.summary}</ReactMarkdown>
                 </div>
                 <Separator className="my-4 w-full" />
